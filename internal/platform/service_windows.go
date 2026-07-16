@@ -4,7 +4,9 @@ package platform
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,11 +20,14 @@ func InstallService(executable, configPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	command := fmt.Sprintf(
-		`powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "& '%s' run --config '%s'"`,
-		escapePowerShellSingleQuoted(installedExecutable),
-		escapePowerShellSingleQuoted(configPath),
-	)
+	launcherPath, err := writeWindowsServiceLauncher(installedExecutable, configPath)
+	if err != nil {
+		return "", err
+	}
+	command := windowsScheduledTaskCommand(launcherPath)
+	if len(command) > maxScheduledTaskCommandLength {
+		return "", fmt.Errorf("scheduled task command is %d characters; Windows permits at most %d", len(command), maxScheduledTaskCommandLength)
+	}
 	output, err := exec.Command(
 		"schtasks.exe",
 		"/Create",
@@ -42,13 +47,26 @@ func InstallService(executable, configPath string) (string, error) {
 	return `Windows Scheduled Task "` + scheduledTaskName + `"`, nil
 }
 
-func escapePowerShellSingleQuoted(value string) string {
-	return strings.ReplaceAll(value, "'", "''")
+func writeWindowsServiceLauncher(executable, configPath string) (string, error) {
+	launcherPath := filepath.Join(filepath.Dir(executable), "service.ps1")
+	content := fmt.Sprintf(
+		"$ErrorActionPreference = 'Stop'\r\n& '%s' run --config '%s'\r\n",
+		escapePowerShellSingleQuoted(executable),
+		escapePowerShellSingleQuoted(configPath),
+	)
+	temp := launcherPath + ".tmp"
+	if err := os.WriteFile(temp, []byte(content), 0o600); err != nil {
+		return "", fmt.Errorf("write background launcher: %w", err)
+	}
+	if err := os.Rename(temp, launcherPath); err != nil {
+		return "", fmt.Errorf("replace background launcher: %w", err)
+	}
+	return launcherPath, nil
 }
 
 func UninstallService() error {
 	output, err := exec.Command("schtasks.exe", "/Delete", "/TN", scheduledTaskName, "/F").CombinedOutput()
-	if err != nil && !strings.Contains(strings.ToLower(string(output)), "cannot find") {
+	if err != nil && !taskNotFoundOutput(string(output)) {
 		return fmt.Errorf("delete scheduled task: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil

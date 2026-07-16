@@ -98,6 +98,8 @@ in the wizard when needed.
   state once.
 - The Scheduled Task launches through a hidden PowerShell host, so no terminal
   remains open.
+- Service installation uses a short launcher script to stay below Windows Task
+  Scheduler's 261-character action limit.
 
 ## Build
 
