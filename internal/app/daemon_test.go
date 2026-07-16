@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log"
 	"sync"
@@ -104,6 +105,33 @@ func TestDaemonSwitchesToAwayInputOnDisconnect(t *testing.T) {
 	}
 }
 
+func TestDaemonRetriesFailedSwitchAtConfiguredInterval(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	cfg.PollIntervalMS = 5
+	cfg.SwitchOnStart = true
+	cfg.RetryIntervalMS = 15
+
+	attempts := 0
+	check := func(context.Context, config.DeviceConfig) (bool, error) { return true, nil }
+	switchInput := func(context.Context, config.Controller, string, uint16) error {
+		attempts++
+		if attempts == 1 {
+			return errors.New("temporary DDC failure")
+		}
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	if err := runDaemon(ctx, cfg, log.New(io.Discard, "", 0), check, switchInput); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 {
+		t.Fatalf("got %d switch attempts, want 2", attempts)
+	}
+}
+
 func testConfig() config.Config {
 	return config.Config{
 		Device: config.DeviceConfig{Name: "KVM", VendorID: 1, ProductID: 2},
@@ -113,9 +141,10 @@ func testConfig() config.Config {
 			ConnectedInputCode:    15,
 			DisconnectedInputCode: 17,
 		},
-		Controller:     config.Controller{Backend: "test"},
-		PollIntervalMS: 5,
-		DebounceChecks: 2,
-		RetrySeconds:   1,
+		Controller:      config.Controller{Backend: "test"},
+		PollIntervalMS:  5,
+		DebounceChecks:  2,
+		RetrySeconds:    1,
+		RetryIntervalMS: 20,
 	}
 }

@@ -26,6 +26,11 @@ func Matches(device USBDevice, match config.DeviceConfig) bool {
 }
 
 func DevicePresent(ctx context.Context, match config.DeviceConfig) (bool, error) {
+	if present, supported, err := fastDevicePresent(ctx, match); err != nil {
+		return false, err
+	} else if supported {
+		return present, nil
+	}
 	devices, err := ListUSBDevices(ctx)
 	if err != nil {
 		return false, err

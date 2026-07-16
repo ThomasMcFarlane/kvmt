@@ -14,6 +14,7 @@ var (
 	ioRegString      = regexp.MustCompile(`"(USB Product Name|kUSBProductString|USB Serial Number|kUSBSerialNumberString)" = "([^"]*)"`)
 	m1ddcDisplay     = regexp.MustCompile(`^\s*\[\d+\]\s+(.+?)\s+\(([0-9A-Fa-f-]{8,})\)\s*$`)
 	windowsUSBID     = regexp.MustCompile(`(?i)^USB\\VID_([0-9A-F]{4})&PID_([0-9A-F]{4})(?:&[^\\]+)*(?:\\(.+))?$`)
+	windowsRawUSBID  = regexp.MustCompile(`(?i)(?:^|[#\\])VID_([0-9A-F]{4})&PID_([0-9A-F]{4})`)
 )
 
 func parseDarwinIOReg(output string) []USBDevice {
@@ -92,6 +93,24 @@ func parseWindowsUSBInstanceIDs(instanceIDs []string) []USBDevice {
 			VendorID:  uint16(vendor),
 			ProductID: uint16(product),
 			Serial:    serial,
+		})
+	}
+	return devices
+}
+
+func parseWindowsRawInputNames(names []string) []USBDevice {
+	devices := make([]USBDevice, 0, len(names))
+	for _, name := range names {
+		match := windowsRawUSBID.FindStringSubmatch(strings.TrimSpace(name))
+		if match == nil {
+			continue
+		}
+		vendor, _ := strconv.ParseUint(match[1], 16, 16)
+		product, _ := strconv.ParseUint(match[2], 16, 16)
+		devices = append(devices, USBDevice{
+			Name:      fmt.Sprintf("Raw Input device %04X:%04X", vendor, product),
+			VendorID:  uint16(vendor),
+			ProductID: uint16(product),
 		})
 	}
 	return devices

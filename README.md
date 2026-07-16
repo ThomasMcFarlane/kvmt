@@ -92,14 +92,18 @@ in the wizard when needed.
 - KVM arrival selects the configured Windows input.
 - KVM departure selects the configured Mac input.
 - A switch is issued only after a state transition, not on every poll.
-- A failed DDC/CI command is retried every five seconds while the detected KVM
-  state remains unchanged.
+- A failed DDC/CI command is retried every 500 milliseconds while the detected
+  KVM state remains unchanged.
 - Starting the background process selects the input matching the current KVM
   state once.
 - The Scheduled Task launches through `wscript.exe`, a GUI host with no console
   window. The daemon itself is started with Windows window style `0`.
 - Service installation uses a short launcher script to stay below Windows Task
   Scheduler's 261-character action limit.
+- Keyboard and mouse receivers use Windows Raw Input presence, avoiding the
+  several-second PnP removal delay when the KVM switches away.
+- The background service writes timestamped diagnostics to
+  `%LOCALAPPDATA%\KvmVidSwitcher\service.log`.
 
 ## Build
 

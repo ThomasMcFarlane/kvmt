@@ -110,4 +110,38 @@ func TestLoadMigratesVersionTwoPollingSpeed(t *testing.T) {
 	if cfg.SchemaVersion != SchemaVersion || cfg.PollIntervalMS != 250 {
 		t.Fatalf("version two config was not migrated: %#v", cfg)
 	}
+	if cfg.RetryIntervalMS != 500 {
+		t.Fatalf("migrated retry interval is %d, want 500", cfg.RetryIntervalMS)
+	}
+}
+
+func TestLoadMigratesVersionThreeRetrySpeed(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	backend := "windows-ddc"
+	executable := ""
+	if runtime.GOOS == "darwin" {
+		backend = "m1ddc"
+		executable = "/opt/homebrew/bin/m1ddc"
+	}
+	data := []byte(`{
+  "schema_version": 3,
+  "device": {"name":"KVM","vendor_id":1,"product_id":2},
+  "monitor": {"id":"display-1","name":"Monitor","connected_input_code":15,"disconnected_input_code":17},
+  "controller": {"backend":"` + backend + `","executable":"` + executable + `"},
+  "poll_interval_ms":250,
+  "debounce_checks":2,
+  "switch_on_start":true,
+  "retry_seconds":5
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SchemaVersion != SchemaVersion || cfg.RetryIntervalMS != 500 {
+		t.Fatalf("version three config was not migrated: %#v", cfg)
+	}
 }

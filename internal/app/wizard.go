@@ -108,11 +108,12 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 			ConnectedInputCode:    connectedInputCode,
 			DisconnectedInputCode: disconnectedInputCode,
 		},
-		Controller:     controller,
-		PollIntervalMS: 250,
-		DebounceChecks: 2,
-		SwitchOnStart:  true,
-		RetrySeconds:   5,
+		Controller:      controller,
+		PollIntervalMS:  250,
+		DebounceChecks:  2,
+		SwitchOnStart:   true,
+		RetrySeconds:    5,
+		RetryIntervalMS: 500,
 	}
 	if err := config.Save(path, cfg); err != nil {
 		return err

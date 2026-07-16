@@ -78,3 +78,18 @@ func TestParseWindowsUSBInstanceIDs(t *testing.T) {
 		t.Fatalf("composite location should not be used as serial: %#v", devices[1])
 	}
 }
+
+func TestParseWindowsRawInputNames(t *testing.T) {
+	t.Parallel()
+	devices := parseWindowsRawInputNames([]string{
+		`\\?\HID#VID_046D&PID_C359&MI_00#7&123&0&0000#{GUID}`,
+		`\\?\HID#VID_1532&PID_00AB#8&456&0&0000#{GUID}`,
+		`\\?\ACPI#PNP0303#4&ABC&0`,
+	})
+	if len(devices) != 2 {
+		t.Fatalf("got %d devices, want 2: %#v", len(devices), devices)
+	}
+	if devices[0].VendorID != 0x046d || devices[0].ProductID != 0xc359 {
+		t.Fatalf("unexpected first Raw Input device: %#v", devices[0])
+	}
+}

@@ -42,7 +42,7 @@ func runDaemon(
 	switchInput inputSwitcher,
 ) error {
 	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
-	retryAfter := time.Duration(cfg.RetrySeconds) * time.Second
+	retryAfter := time.Duration(cfg.RetryIntervalMS) * time.Millisecond
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 

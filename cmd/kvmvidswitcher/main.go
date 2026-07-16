@@ -52,6 +52,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		fs.SetOutput(errOut)
 		configPath := fs.String("config", "", "configuration file path")
 		once := fs.Bool("once", false, "check once and switch for the current KVM state")
+		logPath := fs.String("log", "", "append daemon logs to this file")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -65,7 +66,20 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		logger := log.New(out, "", log.LstdFlags)
+		logOutput := out
+		var logFile *os.File
+		if *logPath != "" {
+			if err := os.MkdirAll(filepath.Dir(*logPath), 0o755); err != nil {
+				return fmt.Errorf("create log directory: %w", err)
+			}
+			logFile, err = os.OpenFile(*logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				return fmt.Errorf("open log file: %w", err)
+			}
+			defer logFile.Close()
+			logOutput = logFile
+		}
+		logger := log.New(logOutput, "", log.LstdFlags|log.Lmicroseconds)
 		if *once {
 			return app.RunOnce(ctx, cfg, logger)
 		}

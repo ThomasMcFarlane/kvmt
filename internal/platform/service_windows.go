@@ -61,7 +61,8 @@ func InstallService(executable, configPath string) (string, error) {
 
 func writeWindowsServiceLauncher(executable, configPath string) (string, error) {
 	launcherPath := filepath.Join(filepath.Dir(executable), "service.vbs")
-	childCommand := fmt.Sprintf(`"%s" run --config "%s"`, executable, configPath)
+	logPath := filepath.Join(filepath.Dir(configPath), "service.log")
+	childCommand := fmt.Sprintf(`"%s" run --config "%s" --log "%s"`, executable, configPath, logPath)
 	content := fmt.Sprintf(
 		"Option Explicit\r\nDim shell\r\nSet shell = CreateObject(\"WScript.Shell\")\r\nWScript.Quit shell.Run(%s, 0, True)\r\n",
 		vbscriptString(childCommand),

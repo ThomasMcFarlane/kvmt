@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -32,6 +33,9 @@ var (
 	getPhysicalMonitors    = dxva2.NewProc("GetPhysicalMonitorsFromHMONITOR")
 	destroyPhysical        = dxva2.NewProc("DestroyPhysicalMonitor")
 	setVCPFeature          = dxva2.NewProc("SetVCPFeature")
+	getRawInputDeviceList  = user32.NewProc("GetRawInputDeviceList")
+	getRawInputDeviceInfoW = user32.NewProc("GetRawInputDeviceInfoW")
+	rawInputCapable        sync.Map
 )
 
 type windowsUSBDevice struct {
@@ -42,6 +46,12 @@ type windowsUSBDevice struct {
 type physicalMonitor struct {
 	Handle      uintptr
 	Description [128]uint16
+}
+
+type rawInputDeviceList struct {
+	Device uintptr
+	Type   uint32
+	_      uint32
 }
 
 func ListUSBDevices(ctx context.Context) ([]USBDevice, error) {
@@ -121,6 +131,78 @@ func ListUSBDevicesDetailed(ctx context.Context) ([]USBDevice, error) {
 		}
 	}
 	return fast, nil
+}
+
+func fastDevicePresent(ctx context.Context, match config.DeviceConfig) (bool, bool, error) {
+	rawDevices, err := listRawInputUSBDevices(ctx)
+	if err != nil {
+		return false, false, nil
+	}
+	key := fmt.Sprintf("%04X:%04X", match.VendorID, match.ProductID)
+	for _, device := range rawDevices {
+		if device.VendorID == match.VendorID && device.ProductID == match.ProductID {
+			rawInputCapable.Store(key, true)
+			return true, true, nil
+		}
+	}
+	if _, learned := rawInputCapable.Load(key); learned {
+		return false, true, nil
+	}
+	return false, false, nil
+}
+
+func listRawInputUSBDevices(ctx context.Context) ([]USBDevice, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	var count uint32
+	structSize := uint32(unsafe.Sizeof(rawInputDeviceList{}))
+	result, _, callErr := getRawInputDeviceList.Call(0, uintptr(unsafe.Pointer(&count)), uintptr(structSize))
+	if uint32(result) == ^uint32(0) {
+		return nil, fmt.Errorf("get Raw Input device count: %v", callErr)
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	items := make([]rawInputDeviceList, count)
+	result, _, callErr = getRawInputDeviceList.Call(
+		uintptr(unsafe.Pointer(&items[0])),
+		uintptr(unsafe.Pointer(&count)),
+		uintptr(structSize),
+	)
+	if uint32(result) == ^uint32(0) {
+		return nil, fmt.Errorf("list Raw Input devices: %v", callErr)
+	}
+	if count > uint32(len(items)) {
+		count = uint32(len(items))
+	}
+	var names []string
+	for _, item := range items[:count] {
+		var nameLength uint32
+		result, _, _ = getRawInputDeviceInfoW.Call(
+			item.Device,
+			0x20000007,
+			0,
+			uintptr(unsafe.Pointer(&nameLength)),
+		)
+		if uint32(result) == ^uint32(0) || nameLength == 0 {
+			continue
+		}
+		buffer := make([]uint16, nameLength+1)
+		result, _, _ = getRawInputDeviceInfoW.Call(
+			item.Device,
+			0x20000007,
+			uintptr(unsafe.Pointer(&buffer[0])),
+			uintptr(unsafe.Pointer(&nameLength)),
+		)
+		if uint32(result) == ^uint32(0) {
+			continue
+		}
+		names = append(names, syscall.UTF16ToString(buffer))
+	}
+	return parseWindowsRawInputNames(names), nil
 }
 
 func splitUTF16MultiString(buffer []uint16) []string {

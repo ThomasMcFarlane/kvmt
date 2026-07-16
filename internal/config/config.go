@@ -9,17 +9,18 @@ import (
 	"runtime"
 )
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 type Config struct {
-	SchemaVersion  int           `json:"schema_version"`
-	Device         DeviceConfig  `json:"device"`
-	Monitor        MonitorConfig `json:"monitor"`
-	Controller     Controller    `json:"controller"`
-	PollIntervalMS int           `json:"poll_interval_ms"`
-	DebounceChecks int           `json:"debounce_checks"`
-	SwitchOnStart  bool          `json:"switch_on_start"`
-	RetrySeconds   int           `json:"retry_seconds"`
+	SchemaVersion   int           `json:"schema_version"`
+	Device          DeviceConfig  `json:"device"`
+	Monitor         MonitorConfig `json:"monitor"`
+	Controller      Controller    `json:"controller"`
+	PollIntervalMS  int           `json:"poll_interval_ms"`
+	DebounceChecks  int           `json:"debounce_checks"`
+	SwitchOnStart   bool          `json:"switch_on_start"`
+	RetrySeconds    int           `json:"retry_seconds"`
+	RetryIntervalMS int           `json:"retry_interval_ms,omitempty"`
 }
 
 type DeviceConfig struct {
@@ -107,6 +108,9 @@ func (cfg *Config) applyDefaults() {
 	if cfg.RetrySeconds == 0 {
 		cfg.RetrySeconds = 5
 	}
+	if cfg.RetryIntervalMS == 0 {
+		cfg.RetryIntervalMS = 500
+	}
 }
 
 func (cfg *Config) migrate() {
@@ -121,6 +125,10 @@ func (cfg *Config) migrate() {
 		if cfg.PollIntervalMS == 1000 {
 			cfg.PollIntervalMS = 250
 		}
+		cfg.SchemaVersion = 3
+	}
+	if cfg.SchemaVersion == 3 {
+		cfg.RetryIntervalMS = 500
 		cfg.SchemaVersion = SchemaVersion
 	}
 }
@@ -153,6 +161,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.RetrySeconds < 1 || cfg.RetrySeconds > 300 {
 		return errors.New("retry_seconds must be between 1 and 300")
+	}
+	if cfg.RetryIntervalMS < 100 || cfg.RetryIntervalMS > 30000 {
+		return errors.New("retry_interval_ms must be between 100 and 30000")
 	}
 	switch runtime.GOOS {
 	case "darwin":

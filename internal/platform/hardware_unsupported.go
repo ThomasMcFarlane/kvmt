@@ -17,6 +17,10 @@ func ListUSBDevicesDetailed(ctx context.Context) ([]USBDevice, error) {
 	return ListUSBDevices(ctx)
 }
 
+func fastDevicePresent(context.Context, config.DeviceConfig) (bool, bool, error) {
+	return false, false, nil
+}
+
 func DefaultController() (config.Controller, error) {
 	return config.Controller{}, fmt.Errorf("this operating system is not supported")
 }
