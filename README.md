@@ -55,6 +55,8 @@ kvmvidswitcher setup
 kvmvidswitcher run
 kvmvidswitcher run --once
 kvmvidswitcher switch
+kvmvidswitcher switch --state disconnected
+kvmvidswitcher switch --state connected
 kvmvidswitcher devices
 kvmvidswitcher monitors
 kvmvidswitcher doctor
@@ -84,15 +86,18 @@ in the wizard when needed.
 
 ## Behaviour
 
-- USB presence is polled once per second.
-- Two matching checks debounce a KVM transition.
+- USB presence uses native Windows device enumeration every 250 milliseconds.
+- Two matching checks debounce a KVM transition, giving roughly 0.5-second
+  detection without launching PowerShell in the monitoring loop.
 - KVM arrival selects the configured Windows input.
 - KVM departure selects the configured Mac input.
 - A switch is issued only after a state transition, not on every poll.
-- A failed DDC/CI command is retried every five seconds while the KVM remains
-  connected.
+- A failed DDC/CI command is retried every five seconds while the detected KVM
+  state remains unchanged.
 - Starting the background process selects the input matching the current KVM
   state once.
+- The Scheduled Task launches through a hidden PowerShell host, so no terminal
+  remains open.
 
 ## Build
 

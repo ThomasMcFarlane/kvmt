@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/app"
@@ -50,7 +51,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		fs := flag.NewFlagSet("run", flag.ContinueOnError)
 		fs.SetOutput(errOut)
 		configPath := fs.String("config", "", "configuration file path")
-		once := fs.Bool("once", false, "check once and switch if the KVM is connected")
+		once := fs.Bool("once", false, "check once and switch for the current KVM state")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -75,6 +76,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		fs.SetOutput(errOut)
 		configPath := fs.String("config", "", "configuration file path")
 		input := fs.Int("input", -1, "override configured input code")
+		state := fs.String("state", "connected", "configured state: connected or disconnected")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -86,9 +88,20 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		if err != nil {
 			return err
 		}
-		code := cfg.Monitor.ConnectedInputCode
+		var code uint16
+		switch strings.ToLower(*state) {
+		case "connected", "windows", "present":
+			code = cfg.Monitor.ConnectedInputCode
+		case "disconnected", "mac", "away", "absent":
+			code = cfg.Monitor.DisconnectedInputCode
+		default:
+			return fmt.Errorf("invalid switch state %q; use connected or disconnected", *state)
+		}
 		if *input >= 0 {
 			code = uint16(*input)
+		}
+		if code == 0 {
+			return fmt.Errorf("no input is configured for state %q", *state)
 		}
 		if err := platform.SwitchInput(context.Background(), cfg.Controller, cfg.Monitor.ID, code); err != nil {
 			return err
@@ -97,7 +110,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		return nil
 
 	case "devices":
-		devices, err := platform.ListUSBDevices(context.Background())
+		devices, err := platform.ListUSBDevicesDetailed(context.Background())
 		if err != nil {
 			return err
 		}
@@ -215,8 +228,9 @@ func printUsage(out io.Writer) {
 Usage:
   kvmvidswitcher setup                 Guided configuration
   kvmvidswitcher run                   Run the monitor in the foreground
-  kvmvidswitcher run --once            Switch once if the KVM is connected
-  kvmvidswitcher switch [--input N]    Test or force an input switch
+  kvmvidswitcher run --once            Switch once for the current KVM state
+  kvmvidswitcher switch [--state STATE] Test a configured input
+  kvmvidswitcher switch --input N       Force a specific input code
   kvmvidswitcher devices               List connected USB devices
   kvmvidswitcher monitors              List controllable monitors
   kvmvidswitcher doctor                Check the configuration and hardware

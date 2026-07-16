@@ -9,7 +9,7 @@ import (
 	"runtime"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type Config struct {
 	SchemaVersion  int           `json:"schema_version"`
@@ -99,7 +99,7 @@ func (cfg *Config) applyDefaults() {
 		cfg.SchemaVersion = SchemaVersion
 	}
 	if cfg.PollIntervalMS == 0 {
-		cfg.PollIntervalMS = 1000
+		cfg.PollIntervalMS = 250
 	}
 	if cfg.DebounceChecks == 0 {
 		cfg.DebounceChecks = 2
@@ -115,6 +115,12 @@ func (cfg *Config) migrate() {
 			cfg.Monitor.ConnectedInputCode = cfg.Monitor.InputCode
 		}
 		cfg.Monitor.InputCode = 0
+		cfg.SchemaVersion = 2
+	}
+	if cfg.SchemaVersion == 2 {
+		if cfg.PollIntervalMS == 1000 {
+			cfg.PollIntervalMS = 250
+		}
 		cfg.SchemaVersion = SchemaVersion
 	}
 }

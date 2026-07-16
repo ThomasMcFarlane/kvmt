@@ -60,7 +60,11 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 		return err
 	}
 
-	fmt.Fprintf(out, "\nTest: switch %s to input %d now? [Y/n]: ", monitor.Name, connectedInputCode)
+	testLabel := "this computer"
+	if runtime.GOOS == "windows" {
+		testLabel = "Windows"
+	}
+	fmt.Fprintf(out, "\nTest the %s input %d now? [Y/n]: ", testLabel, connectedInputCode)
 	test, err := w.readYesNo(true)
 	if err != nil {
 		return err
@@ -70,6 +74,24 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 			return fmt.Errorf("test monitor input: %w", err)
 		}
 		fmt.Fprintln(out, "Monitor command succeeded.")
+	}
+	if disconnectedInputCode != 0 {
+		fmt.Fprintf(out, "\nTest the Mac input %d for five seconds, then restore Windows automatically? [Y/n]: ", disconnectedInputCode)
+		testAway, err := w.readYesNo(true)
+		if err != nil {
+			return err
+		}
+		if testAway {
+			fmt.Fprintln(out, "Switching to the Mac input; Windows will restore in five seconds...")
+			if err := platform.SwitchInput(ctx, controller, monitor.ID, disconnectedInputCode); err != nil {
+				return fmt.Errorf("test Mac monitor input: %w", err)
+			}
+			time.Sleep(5 * time.Second)
+			if err := platform.SwitchInput(ctx, controller, monitor.ID, connectedInputCode); err != nil {
+				return fmt.Errorf("restore Windows monitor input after Mac test: %w", err)
+			}
+			fmt.Fprintln(out, "Both monitor inputs responded successfully.")
+		}
 	}
 
 	cfg := config.Config{
@@ -87,7 +109,7 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 			DisconnectedInputCode: disconnectedInputCode,
 		},
 		Controller:     controller,
-		PollIntervalMS: 1000,
+		PollIntervalMS: 250,
 		DebounceChecks: 2,
 		SwitchOnStart:  true,
 		RetrySeconds:   5,
@@ -100,7 +122,8 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 	if disconnectedInputCode != 0 {
 		fmt.Fprintf(out, "KVM connected → input %d; KVM disconnected → input %d.\n", connectedInputCode, disconnectedInputCode)
 	}
-	fmt.Fprintln(out, "Run 'kvmvidswitcher run --once' to verify detection.")
+	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state disconnected' to test the Mac input.")
+	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state connected' to restore Windows.")
 	fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to start it automatically.")
 	return nil
 }
@@ -160,7 +183,7 @@ func (w wizard) chooseInput(prompt string) (uint16, error) {
 }
 
 func (w wizard) detectKVMDevice(ctx context.Context) (platform.USBDevice, error) {
-	connected, err := platform.ListUSBDevices(ctx)
+	connected, err := platform.ListUSBDevicesDetailed(ctx)
 	if err != nil {
 		return platform.USBDevice{}, fmt.Errorf("list connected USB devices: %w", err)
 	}

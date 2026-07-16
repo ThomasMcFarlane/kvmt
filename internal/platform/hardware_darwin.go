@@ -21,6 +21,10 @@ func ListUSBDevices(ctx context.Context) ([]USBDevice, error) {
 	return parseDarwinIOReg(string(output)), nil
 }
 
+func ListUSBDevicesDetailed(ctx context.Context) ([]USBDevice, error) {
+	return ListUSBDevices(ctx)
+}
+
 func DefaultController() (config.Controller, error) {
 	path, err := exec.LookPath("m1ddc")
 	if err != nil {

@@ -6,16 +6,23 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 const scheduledTaskName = "KvmVidSwitcher"
 
 func InstallService(executable, configPath string) (string, error) {
+	_ = exec.Command("schtasks.exe", "/End", "/TN", scheduledTaskName).Run()
+	time.Sleep(300 * time.Millisecond)
 	installedExecutable, err := installExecutable(executable)
 	if err != nil {
 		return "", err
 	}
-	command := fmt.Sprintf(`"%s" run --config "%s"`, installedExecutable, configPath)
+	command := fmt.Sprintf(
+		`powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "& '%s' run --config '%s'"`,
+		escapePowerShellSingleQuoted(installedExecutable),
+		escapePowerShellSingleQuoted(configPath),
+	)
 	output, err := exec.Command(
 		"schtasks.exe",
 		"/Create",
@@ -33,6 +40,10 @@ func InstallService(executable, configPath string) (string, error) {
 		return "", fmt.Errorf("start scheduled task: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return `Windows Scheduled Task "` + scheduledTaskName + `"`, nil
+}
+
+func escapePowerShellSingleQuoted(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func UninstallService() error {

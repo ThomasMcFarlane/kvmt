@@ -60,3 +60,21 @@ func TestMatchesHonoursOptionalSerial(t *testing.T) {
 		t.Fatal("device should not match a different serial")
 	}
 }
+
+func TestParseWindowsUSBInstanceIDs(t *testing.T) {
+	t.Parallel()
+	devices := parseWindowsUSBInstanceIDs([]string{
+		`USB\VID_046D&PID_C359\1E441C8B`,
+		`USB\VID_1532&PID_00AB&MI_00\6&12345&0&2`,
+		`SWD\PRINTENUM\not-usb`,
+	})
+	if len(devices) != 2 {
+		t.Fatalf("got %d devices, want 2: %#v", len(devices), devices)
+	}
+	if devices[0].VendorID != 0x046d || devices[0].ProductID != 0xc359 || devices[0].Serial != "1E441C8B" {
+		t.Fatalf("unexpected serial device: %#v", devices[0])
+	}
+	if devices[1].Serial != "" {
+		t.Fatalf("composite location should not be used as serial: %#v", devices[1])
+	}
+}
