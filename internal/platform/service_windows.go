@@ -15,6 +15,18 @@ const scheduledTaskName = "KvmVidSwitcher"
 
 func InstallService(executable, configPath string) (string, error) {
 	_ = exec.Command("schtasks.exe", "/End", "/TN", scheduledTaskName).Run()
+	stopOldDaemon := fmt.Sprintf(
+		`Get-Process -Name kvmvidswitcher -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne %d } | Stop-Process -Force`,
+		os.Getpid(),
+	)
+	_ = exec.Command(
+		"powershell.exe",
+		"-NoLogo",
+		"-NoProfile",
+		"-NonInteractive",
+		"-ExecutionPolicy", "Bypass",
+		"-Command", stopOldDaemon,
+	).Run()
 	time.Sleep(300 * time.Millisecond)
 	installedExecutable, err := installExecutable(executable)
 	if err != nil {
@@ -48,12 +60,13 @@ func InstallService(executable, configPath string) (string, error) {
 }
 
 func writeWindowsServiceLauncher(executable, configPath string) (string, error) {
-	launcherPath := filepath.Join(filepath.Dir(executable), "service.ps1")
+	launcherPath := filepath.Join(filepath.Dir(executable), "service.vbs")
+	childCommand := fmt.Sprintf(`"%s" run --config "%s"`, executable, configPath)
 	content := fmt.Sprintf(
-		"$ErrorActionPreference = 'Stop'\r\n& '%s' run --config '%s'\r\n",
-		escapePowerShellSingleQuoted(executable),
-		escapePowerShellSingleQuoted(configPath),
+		"Option Explicit\r\nDim shell\r\nSet shell = CreateObject(\"WScript.Shell\")\r\nWScript.Quit shell.Run(%s, 0, True)\r\n",
+		vbscriptString(childCommand),
 	)
+	_ = os.Remove(filepath.Join(filepath.Dir(executable), "service.ps1"))
 	temp := launcherPath + ".tmp"
 	if err := os.WriteFile(temp, []byte(content), 0o600); err != nil {
 		return "", fmt.Errorf("write background launcher: %w", err)

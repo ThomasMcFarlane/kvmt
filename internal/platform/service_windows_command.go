@@ -9,13 +9,13 @@ const maxScheduledTaskCommandLength = 261
 
 func windowsScheduledTaskCommand(launcherPath string) string {
 	return fmt.Sprintf(
-		`powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "%s"`,
+		`wscript.exe //B //NoLogo "%s"`,
 		launcherPath,
 	)
 }
 
-func escapePowerShellSingleQuoted(value string) string {
-	return strings.ReplaceAll(value, "'", "''")
+func vbscriptString(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 func taskNotFoundOutput(output string) bool {

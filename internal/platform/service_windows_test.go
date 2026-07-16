@@ -8,19 +8,21 @@ import (
 
 func TestWindowsScheduledTaskCommandFitsTaskSchedulerLimit(t *testing.T) {
 	t.Parallel()
-	launcher := filepath.Join(`C:\Users`, strings.Repeat("a", 80), `AppData\Local\KvmVidSwitcher\bin\service.ps1`)
+	launcher := filepath.Join(`C:\Users`, strings.Repeat("a", 80), `AppData\Local\KvmVidSwitcher\bin\service.vbs`)
 	command := windowsScheduledTaskCommand(launcher)
 	if len(command) > maxScheduledTaskCommandLength {
 		t.Fatalf("command is %d characters, limit is %d: %s", len(command), maxScheduledTaskCommandLength, command)
 	}
-	if !strings.Contains(command, `-File "`) {
-		t.Fatalf("command does not use a launcher file: %s", command)
+	if !strings.HasPrefix(command, `wscript.exe //B //NoLogo "`) {
+		t.Fatalf("command does not use no-console Windows Script Host: %s", command)
 	}
 }
 
-func TestEscapePowerShellSingleQuoted(t *testing.T) {
+func TestVBScriptStringQuotesCommand(t *testing.T) {
 	t.Parallel()
-	if got := escapePowerShellSingleQuoted(`C:\Users\O'Brien\app.exe`); got != `C:\Users\O''Brien\app.exe` {
-		t.Fatalf("unexpected escaped path %q", got)
+	command := `"C:\Users\Thomas McFarlane\app.exe" run --config "C:\Users\Thomas McFarlane\config.json"`
+	want := `"""C:\Users\Thomas McFarlane\app.exe"" run --config ""C:\Users\Thomas McFarlane\config.json"""`
+	if got := vbscriptString(command); got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

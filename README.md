@@ -96,8 +96,8 @@ in the wizard when needed.
   state remains unchanged.
 - Starting the background process selects the input matching the current KVM
   state once.
-- The Scheduled Task launches through a hidden PowerShell host, so no terminal
-  remains open.
+- The Scheduled Task launches through `wscript.exe`, a GUI host with no console
+  window. The daemon itself is started with Windows window style `0`.
 - Service installation uses a short launcher script to stay below Windows Task
   Scheduler's 261-character action limit.
 
