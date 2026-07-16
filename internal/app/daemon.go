@@ -22,14 +22,15 @@ func RunOnce(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("detect KVM device: %w", err)
 	}
-	if !present {
-		logger.Printf("KVM device %s is not connected; no switch needed", cfg.Device.Name)
+	inputCode := cfg.InputCodeForDeviceState(present)
+	if inputCode == 0 {
+		logger.Printf("no monitor input is configured for KVM device state connected=%t", present)
 		return nil
 	}
-	if err := platform.SwitchInput(ctx, cfg.Controller, cfg.Monitor.ID, cfg.Monitor.InputCode); err != nil {
+	if err := platform.SwitchInput(ctx, cfg.Controller, cfg.Monitor.ID, inputCode); err != nil {
 		return err
 	}
-	logger.Printf("switched %s to input %d", cfg.Monitor.Name, cfg.Monitor.InputCode)
+	logger.Printf("switched %s to input %d", cfg.Monitor.Name, inputCode)
 	return nil
 }
 
@@ -57,7 +58,7 @@ func runDaemon(
 	var initialised bool
 	var candidate bool
 	var candidateCount int
-	var switchPending bool
+	var pendingInput uint16
 	var nextRetry time.Time
 
 	checkNow := func(now time.Time) error {
@@ -71,7 +72,9 @@ func runDaemon(
 			stablePresent = present
 			candidate = present
 			candidateCount = cfg.DebounceChecks
-			switchPending = present && cfg.SwitchOnStart
+			if cfg.SwitchOnStart {
+				pendingInput = cfg.InputCodeForDeviceState(present)
+			}
 			if present {
 				logger.Printf("KVM device is connected")
 			} else {
@@ -88,25 +91,25 @@ func runDaemon(
 			stablePresent = candidate
 			if stablePresent {
 				logger.Printf("KVM switched to this computer")
-				switchPending = true
-				nextRetry = time.Time{}
 			} else {
 				logger.Printf("KVM switched away from this computer")
-				switchPending = false
 			}
+			pendingInput = cfg.InputCodeForDeviceState(stablePresent)
+			nextRetry = time.Time{}
 		}
 
-		if !stablePresent || !switchPending || (!nextRetry.IsZero() && now.Before(nextRetry)) {
+		if pendingInput == 0 || (!nextRetry.IsZero() && now.Before(nextRetry)) {
 			return nil
 		}
-		if err := switchInput(ctx, cfg.Controller, cfg.Monitor.ID, cfg.Monitor.InputCode); err != nil {
+		if err := switchInput(ctx, cfg.Controller, cfg.Monitor.ID, pendingInput); err != nil {
 			nextRetry = now.Add(retryAfter)
 			logger.Printf("monitor switch failed; retrying in %s: %v", retryAfter, err)
 			return nil
 		}
-		switchPending = false
+		switchedInput := pendingInput
+		pendingInput = 0
 		nextRetry = time.Time{}
-		logger.Printf("switched %s to input %d", cfg.Monitor.Name, cfg.Monitor.InputCode)
+		logger.Printf("switched %s to input %d", cfg.Monitor.Name, switchedInput)
 		return nil
 	}
 

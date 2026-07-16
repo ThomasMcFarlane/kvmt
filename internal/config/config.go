@@ -9,7 +9,7 @@ import (
 	"runtime"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type Config struct {
 	SchemaVersion  int           `json:"schema_version"`
@@ -30,9 +30,11 @@ type DeviceConfig struct {
 }
 
 type MonitorConfig struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	InputCode uint16 `json:"input_code"`
+	ID                    string `json:"id"`
+	Name                  string `json:"name"`
+	ConnectedInputCode    uint16 `json:"connected_input_code"`
+	DisconnectedInputCode uint16 `json:"disconnected_input_code,omitempty"`
+	InputCode             uint16 `json:"input_code,omitempty"`
 }
 
 type Controller struct {
@@ -60,6 +62,7 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse configuration: %w", err)
 	}
+	cfg.migrate()
 	cfg.applyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, fmt.Errorf("invalid configuration: %w", err)
@@ -68,6 +71,7 @@ func Load(path string) (Config, error) {
 }
 
 func Save(path string, cfg Config) error {
+	cfg.migrate()
 	cfg.applyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
@@ -105,6 +109,23 @@ func (cfg *Config) applyDefaults() {
 	}
 }
 
+func (cfg *Config) migrate() {
+	if cfg.SchemaVersion == 1 {
+		if cfg.Monitor.ConnectedInputCode == 0 {
+			cfg.Monitor.ConnectedInputCode = cfg.Monitor.InputCode
+		}
+		cfg.Monitor.InputCode = 0
+		cfg.SchemaVersion = SchemaVersion
+	}
+}
+
+func (cfg Config) InputCodeForDeviceState(present bool) uint16 {
+	if present {
+		return cfg.Monitor.ConnectedInputCode
+	}
+	return cfg.Monitor.DisconnectedInputCode
+}
+
 func (cfg Config) Validate() error {
 	if cfg.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported schema version %d", cfg.SchemaVersion)
@@ -115,8 +136,8 @@ func (cfg Config) Validate() error {
 	if cfg.Monitor.ID == "" {
 		return errors.New("monitor id is required")
 	}
-	if cfg.Monitor.InputCode == 0 {
-		return errors.New("monitor input_code must be non-zero")
+	if cfg.Monitor.ConnectedInputCode == 0 {
+		return errors.New("monitor connected_input_code must be non-zero")
 	}
 	if cfg.PollIntervalMS < 250 || cfg.PollIntervalMS > 60000 {
 		return errors.New("poll_interval_ms must be between 250 and 60000")

@@ -1,62 +1,52 @@
 # KvmVidSwitcher
 
 KvmVidSwitcher keeps a monitor's video input synchronised with a USB KVM.
-Run it on both computers. When the KVM's USB devices move to a computer, that
-computer tells the monitor to select its configured video input.
+For a Mac connected through a dock that blocks DDC/CI, run KvmVidSwitcher only
+on Windows. Windows switches to its own monitor input when the KVM USB device
+appears, and switches to the Mac input when that device disappears.
 
 ```text
-MacBook ── video input A ─┐
-                         ├── Monitor
-Windows ── video input B ─┘
-    │                │
-    └──── USB KVM ───┘
-          switch
-             │
-             └── detected locally → select that computer's monitor input
+MacBook via USB-C dock ── HDMI input ─┐
+                                     ├── Monitor
+Windows ───────────── DisplayPort ────┘
+    │
+    └──── USB KVM
+          │
+          ├── connected to Windows → select Windows input
+          └── disconnected         → select Mac input
 ```
 
 ## Requirements
 
 - A monitor with DDC/CI enabled in its on-screen menu.
 - A KVM that moves at least one identifiable USB device between computers.
-- macOS: Apple Silicon and [`m1ddc`](https://github.com/waydabber/m1ddc).
 - Windows: Windows 10 or 11. Monitor control uses the native Windows DDC/CI API.
 
-Some docks and video adaptors do not pass DDC/CI commands. Direct DisplayPort
-or USB-C connections are generally the most reliable.
+The Windows video connection must pass DDC/CI. The Mac dock does not need to
+pass DDC/CI because it never sends a monitor command.
 
 ## Install
 
-Download the binary for each computer from the GitHub release.
-
-On macOS:
-
-```sh
-brew install m1ddc
-chmod +x kvmvidswitcher-darwin-arm64
-sudo mv kvmvidswitcher-darwin-arm64 /usr/local/bin/kvmvidswitcher
-```
-
-On Windows, rename `kvmvidswitcher-windows-amd64.exe` to
+Download the Windows binary from the GitHub release. Rename
+`kvmvidswitcher-windows-amd64.exe` to
 `kvmvidswitcher.exe` and place it somewhere on your `PATH`, or run it using its
 full path.
 
-## Configure both computers
+## Configure Windows
 
-Complete these steps once on the MacBook and once on Windows:
+The Mac does not need KvmVidSwitcher installed.
 
-1. Switch the KVM to the computer being configured.
-2. Run `kvmvidswitcher setup`.
-3. Select the monitor and the video input connected to that computer.
+1. Switch the KVM to Windows.
+2. Run `kvmvidswitcher.exe setup`.
+3. Select the Windows monitor input, then the Mac monitor input.
 4. Use assisted USB detection. Switch the KVM away for about three seconds,
    then back during the ten-second observation window.
 5. Select a USB device that follows the KVM, then accept the monitor test.
-6. Run `kvmvidswitcher doctor`.
-7. Run `kvmvidswitcher service install`.
+6. Run `kvmvidswitcher.exe doctor`.
+7. Run `kvmvidswitcher.exe service install`.
 
-The installer copies the binary to a stable per-user location. It creates a
-LaunchAgent on macOS and a logon Scheduled Task on Windows. Administrator
-access is not required for the background service.
+The installer copies the binary to a stable per-user location and creates a
+logon Scheduled Task. Administrator access is not required.
 
 ## Commands
 
@@ -96,11 +86,13 @@ in the wizard when needed.
 
 - USB presence is polled once per second.
 - Two matching checks debounce a KVM transition.
-- A switch is issued only when the KVM arrives, not on every poll.
+- KVM arrival selects the configured Windows input.
+- KVM departure selects the configured Mac input.
+- A switch is issued only after a state transition, not on every poll.
 - A failed DDC/CI command is retried every five seconds while the KVM remains
   connected.
-- Starting the background process while the KVM is already connected selects
-  the configured input once.
+- Starting the background process selects the input matching the current KVM
+  state once.
 
 ## Build
 

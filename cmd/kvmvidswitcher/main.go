@@ -86,7 +86,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		if err != nil {
 			return err
 		}
-		code := cfg.Monitor.InputCode
+		code := cfg.Monitor.ConnectedInputCode
 		if *input >= 0 {
 			code = uint16(*input)
 		}

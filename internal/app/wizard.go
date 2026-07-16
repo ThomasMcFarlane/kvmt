@@ -39,9 +39,20 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 	if err != nil {
 		return err
 	}
-	inputCode, err := w.chooseInput()
+	connectedPrompt := "Monitor input used by this computer when the KVM is connected"
+	if runtime.GOOS == "windows" {
+		connectedPrompt = "Monitor input used by Windows when the KVM is connected"
+	}
+	connectedInputCode, err := w.chooseInput(connectedPrompt)
 	if err != nil {
 		return err
+	}
+	disconnectedInputCode := uint16(0)
+	if runtime.GOOS == "windows" {
+		disconnectedInputCode, err = w.chooseInput("Monitor input used by the Mac when the KVM disconnects from Windows")
+		if err != nil {
+			return err
+		}
 	}
 
 	device, err := w.detectKVMDevice(ctx)
@@ -49,13 +60,13 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 		return err
 	}
 
-	fmt.Fprintf(out, "\nTest: switch %s to input %d now? [Y/n]: ", monitor.Name, inputCode)
+	fmt.Fprintf(out, "\nTest: switch %s to input %d now? [Y/n]: ", monitor.Name, connectedInputCode)
 	test, err := w.readYesNo(true)
 	if err != nil {
 		return err
 	}
 	if test {
-		if err := platform.SwitchInput(ctx, controller, monitor.ID, inputCode); err != nil {
+		if err := platform.SwitchInput(ctx, controller, monitor.ID, connectedInputCode); err != nil {
 			return fmt.Errorf("test monitor input: %w", err)
 		}
 		fmt.Fprintln(out, "Monitor command succeeded.")
@@ -70,9 +81,10 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 			Serial:    device.Serial,
 		},
 		Monitor: config.MonitorConfig{
-			ID:        monitor.ID,
-			Name:      monitor.Name,
-			InputCode: inputCode,
+			ID:                    monitor.ID,
+			Name:                  monitor.Name,
+			ConnectedInputCode:    connectedInputCode,
+			DisconnectedInputCode: disconnectedInputCode,
 		},
 		Controller:     controller,
 		PollIntervalMS: 1000,
@@ -85,6 +97,9 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 	}
 
 	fmt.Fprintf(out, "\nConfiguration saved to %s\n", path)
+	if disconnectedInputCode != 0 {
+		fmt.Fprintf(out, "KVM connected → input %d; KVM disconnected → input %d.\n", connectedInputCode, disconnectedInputCode)
+	}
 	fmt.Fprintln(out, "Run 'kvmvidswitcher run --once' to verify detection.")
 	fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to start it automatically.")
 	return nil
@@ -102,7 +117,7 @@ func (w wizard) chooseMonitor(monitors []platform.Monitor) (platform.Monitor, er
 	return monitors[index], nil
 }
 
-func (w wizard) chooseInput() (uint16, error) {
+func (w wizard) chooseInput(prompt string) (uint16, error) {
 	type inputOption struct {
 		name string
 		code uint16
@@ -115,7 +130,7 @@ func (w wizard) chooseInput() (uint16, error) {
 		{name: "USB-C", code: 27},
 		{name: "Custom code", code: 0},
 	}
-	fmt.Fprintln(w.out, "\nMonitor input used by this computer:")
+	fmt.Fprintf(w.out, "\n%s:\n", prompt)
 	for i, option := range options {
 		if option.code == 0 {
 			fmt.Fprintf(w.out, "  %d. %s\n", i+1, option.name)
@@ -322,6 +337,10 @@ func Doctor(ctx context.Context, out io.Writer, path string) error {
 		return nil
 	}
 	fmt.Fprintf(out, "Configuration: OK (%s)\n", path)
+	fmt.Fprintf(out, "KVM connected input: %d\n", cfg.Monitor.ConnectedInputCode)
+	if cfg.Monitor.DisconnectedInputCode != 0 {
+		fmt.Fprintf(out, "KVM disconnected input: %d\n", cfg.Monitor.DisconnectedInputCode)
+	}
 
 	devices, err := platform.ListUSBDevices(ctx)
 	if err != nil {

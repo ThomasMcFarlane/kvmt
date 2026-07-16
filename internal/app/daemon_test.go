@@ -69,10 +69,50 @@ func TestDaemonSwitchesOnStartWhenConnected(t *testing.T) {
 	}
 }
 
+func TestDaemonSwitchesToAwayInputOnDisconnect(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	cfg.PollIntervalMS = 5
+	cfg.DebounceChecks = 2
+	cfg.SwitchOnStart = false
+
+	var mu sync.Mutex
+	checks := 0
+	var switchedInputs []uint16
+	check := func(context.Context, config.DeviceConfig) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		checks++
+		return checks < 3, nil
+	}
+	switchInput := func(_ context.Context, _ config.Controller, _ string, input uint16) error {
+		mu.Lock()
+		defer mu.Unlock()
+		switchedInputs = append(switchedInputs, input)
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	if err := runDaemon(ctx, cfg, log.New(io.Discard, "", 0), check, switchInput); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(switchedInputs) != 1 || switchedInputs[0] != 17 {
+		t.Fatalf("got switched inputs %v, want [17]", switchedInputs)
+	}
+}
+
 func testConfig() config.Config {
 	return config.Config{
-		Device:         config.DeviceConfig{Name: "KVM", VendorID: 1, ProductID: 2},
-		Monitor:        config.MonitorConfig{ID: "one", Name: "Monitor", InputCode: 15},
+		Device: config.DeviceConfig{Name: "KVM", VendorID: 1, ProductID: 2},
+		Monitor: config.MonitorConfig{
+			ID:                    "one",
+			Name:                  "Monitor",
+			ConnectedInputCode:    15,
+			DisconnectedInputCode: 17,
+		},
 		Controller:     config.Controller{Backend: "test"},
 		PollIntervalMS: 5,
 		DebounceChecks: 2,
