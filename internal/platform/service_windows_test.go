@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+func TestWindowsUserPathCommandHandlesSpacesInDirectory(t *testing.T) {
+	t.Parallel()
+	directory := `C:\Users\Thomas McFarlane\AppData\Local\Programs\kvmt\bin`
+	command := windowsUserPathCommand(directory)
+
+	if strings.Contains(strings.Join(command.Args, " "), directory) {
+		t.Fatalf("directory must not be appended to the PowerShell command: %q", command.Args)
+	}
+	wantEnvironment := userPathDirectoryEnvironment + "=" + directory
+	for _, value := range command.Env {
+		if value == wantEnvironment {
+			return
+		}
+	}
+	t.Fatalf("command environment does not contain %q", wantEnvironment)
+}
+
 func TestWindowsScheduledTaskCommandFitsTaskSchedulerLimit(t *testing.T) {
 	t.Parallel()
 	launcher := filepath.Join(`C:\Users`, strings.Repeat("a", 80), `AppData\Local\KVMT\bin\service.vbs`)

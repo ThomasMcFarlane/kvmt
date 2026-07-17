@@ -29,16 +29,7 @@ func installedExecutablePath() (string, error) {
 }
 
 func addToUserPath(directory string) (bool, error) {
-	script := `$directory=$args[0]; $path=[Environment]::GetEnvironmentVariable('Path','User'); $parts=@($path -split ';' | Where-Object { $_ }); if ($parts -contains $directory) { Write-Output 'present' } else { $newPath=(@($parts)+$directory) -join ';'; [Environment]::SetEnvironmentVariable('Path',$newPath,'User'); Write-Output 'added' }`
-	output, err := exec.Command(
-		"powershell.exe",
-		"-NoLogo",
-		"-NoProfile",
-		"-NonInteractive",
-		"-ExecutionPolicy", "Bypass",
-		"-Command", script,
-		directory,
-	).CombinedOutput()
+	output, err := windowsUserPathCommand(directory).CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("add KVMT to user PATH: %w: %s", err, strings.TrimSpace(string(output)))
 	}
