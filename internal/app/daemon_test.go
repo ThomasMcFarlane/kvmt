@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
 )
 
 func TestDaemonSwitchesOnConnectAfterDebounce(t *testing.T) {
@@ -129,6 +129,35 @@ func TestDaemonRetriesFailedSwitchAtConfiguredInterval(t *testing.T) {
 	}
 	if attempts != 2 {
 		t.Fatalf("got %d switch attempts, want 2", attempts)
+	}
+}
+
+func TestDaemonUsesSingleCheckForFastTrigger(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	cfg.PollIntervalMS = 5
+	cfg.DebounceChecks = 5
+	cfg.SwitchOnStart = false
+	cfg.Device.FastTrigger = &config.DeviceMatch{VendorID: 3, ProductID: 4}
+
+	checks := 0
+	switches := 0
+	check := func(context.Context, config.DeviceConfig) (bool, error) {
+		checks++
+		return checks == 1, nil
+	}
+	switchInput := func(context.Context, config.Controller, string, uint16) error {
+		switches++
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := runDaemon(ctx, cfg, log.New(io.Discard, "", 0), check, switchInput); err != nil {
+		t.Fatal(err)
+	}
+	if switches != 1 {
+		t.Fatalf("got %d switches, want 1", switches)
 	}
 }
 

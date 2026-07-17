@@ -8,7 +8,7 @@ import (
 
 func TestWindowsScheduledTaskCommandFitsTaskSchedulerLimit(t *testing.T) {
 	t.Parallel()
-	launcher := filepath.Join(`C:\Users`, strings.Repeat("a", 80), `AppData\Local\KvmVidSwitcher\bin\service.vbs`)
+	launcher := filepath.Join(`C:\Users`, strings.Repeat("a", 80), `AppData\Local\KVMT\bin\service.vbs`)
 	command := windowsScheduledTaskCommand(launcher)
 	if len(command) > maxScheduledTaskCommandLength {
 		t.Fatalf("command is %d characters, limit is %d: %s", len(command), maxScheduledTaskCommandLength, command)
@@ -20,8 +20,8 @@ func TestWindowsScheduledTaskCommandFitsTaskSchedulerLimit(t *testing.T) {
 
 func TestVBScriptStringQuotesCommand(t *testing.T) {
 	t.Parallel()
-	command := `"C:\Users\Thomas McFarlane\app.exe" run --config "C:\Users\Thomas McFarlane\config.json"`
-	want := `"""C:\Users\Thomas McFarlane\app.exe"" run --config ""C:\Users\Thomas McFarlane\config.json"""`
+	command := `"C:\Users\Example User\app.exe" run --config "C:\Users\Example User\config.json"`
+	want := `"""C:\Users\Example User\app.exe"" run --config ""C:\Users\Example User\config.json"""`
 	if got := vbscriptString(command); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

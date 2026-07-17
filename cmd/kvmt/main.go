@@ -10,12 +10,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/app"
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/platform"
+	"github.com/ThomasMcFarlane/kvmt/internal/app"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/platform"
+	"github.com/ThomasMcFarlane/kvmt/internal/updater"
 )
 
 var version = "dev"
@@ -34,6 +36,65 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 	}
 
 	switch args[0] {
+	case "install":
+		executable, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("find current executable: %w", err)
+		}
+		installed, pathAdded, err := platform.InstallCLI(executable)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Installed KVMT to %s\n", installed)
+		if pathAdded {
+			fmt.Fprintln(out, "Added its bin directory to your user PATH. Open a new terminal, then run 'kvmt'.")
+		} else {
+			fmt.Fprintln(out, "The install directory is already on your user PATH.")
+		}
+		return nil
+
+	case "update":
+		fs := flag.NewFlagSet("update", flag.ContinueOnError)
+		fs.SetOutput(errOut)
+		checkOnly := fs.Bool("check", false, "check for an update without installing it")
+		configPath := fs.String("config", "", "configuration file path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		path, err := resolveConfigPath(*configPath)
+		if err != nil {
+			return err
+		}
+		client := updater.NewClient(version, os.Getenv("GITHUB_TOKEN"))
+		release, err := client.Latest(context.Background())
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Current version: %s\nLatest version:  %s\n", version, release.TagName)
+		if !updater.IsNewer(version, release.TagName) {
+			fmt.Fprintln(out, "KVMT is up to date.")
+			return nil
+		}
+		if *checkOnly {
+			fmt.Fprintf(out, "Update available: %s\n", release.HTMLURL)
+			return nil
+		}
+		payload, asset, err := client.Download(context.Background(), release)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Verified SHA-256 digest for %s.\n", asset.Name)
+		target, err := platform.ApplyUpdate(payload, path)
+		if err != nil {
+			return err
+		}
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(out, "Update scheduled for %s. It will finish after this command exits.\n", target)
+		} else {
+			fmt.Fprintf(out, "Updated %s to %s.\n", target, release.TagName)
+		}
+		return nil
+
 	case "setup":
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 		fs.SetOutput(errOut)
@@ -209,7 +270,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 
 	case "service":
 		if len(args) < 2 {
-			return errors.New("usage: kvmvidswitcher service <install|uninstall|status>")
+			return errors.New("usage: kvmt service <install|uninstall|status>")
 		}
 		fs := flag.NewFlagSet("service "+args[1], flag.ContinueOnError)
 		fs.SetOutput(errOut)
@@ -243,12 +304,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 			fmt.Fprintln(out, "Background service removed.")
 			return nil
 		case "status":
-			status, err := platform.ServiceStatus()
-			if err != nil {
-				return err
-			}
-			fmt.Fprintln(out, status)
-			return nil
+			return app.PrintServiceStatus(out, path)
 		default:
 			return fmt.Errorf("unknown service action %q", args[1])
 		}
@@ -260,7 +316,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		printUsage(out)
 		return nil
 	default:
-		return fmt.Errorf("unknown command %q; run 'kvmvidswitcher help'", args[0])
+		return fmt.Errorf("unknown command %q; run 'kvmt help'", args[0])
 	}
 }
 
@@ -276,24 +332,26 @@ func resolveConfigPath(value string) (string, error) {
 }
 
 func printUsage(out io.Writer) {
-	fmt.Fprintln(out, `KvmVidSwitcher keeps a monitor input in sync with a USB KVM.
+	fmt.Fprintln(out, `KVMT (KVM Toggler) keeps a monitor input in sync with a USB KVM.
 
 Usage:
-  kvmvidswitcher setup                 Guided configuration
-  kvmvidswitcher edit                  Selectively edit existing configuration
-  kvmvidswitcher run                   Run the monitor in the foreground
-  kvmvidswitcher run --once            Switch once for the current KVM state
-  kvmvidswitcher switch [--state STATE] Test a configured input
-  kvmvidswitcher switch --input N       Force a specific input code
-  kvmvidswitcher devices               List connected USB devices
-  kvmvidswitcher monitors              List controllable monitors
-  kvmvidswitcher doctor                Check the configuration and hardware
-  kvmvidswitcher debug                 Show the latest background-service logs
-  kvmvidswitcher service install       Start automatically in the background
-  kvmvidswitcher service status        Show background-service status
-  kvmvidswitcher service uninstall     Remove the background service
-  kvmvidswitcher version               Show the version
+  kvmt install                       Install KVMT and add it to the user PATH
+  kvmt update [--check]              Check for or install the latest release
+  kvmt setup                         Guided configuration
+  kvmt edit                          Selectively edit existing configuration
+  kvmt run                           Run the monitor in the foreground
+  kvmt run --once                    Switch once for the current KVM state
+  kvmt switch [--state STATE]        Test a configured input
+  kvmt switch --input N              Force a specific input code
+  kvmt devices                       List connected USB devices
+  kvmt monitors                      List controllable monitors
+  kvmt doctor                        Check the configuration and hardware
+  kvmt debug                         Show the latest background-service logs
+  kvmt service install               Start automatically in the background
+  kvmt service status                Show service state and active config
+  kvmt service uninstall             Remove the background service
+  kvmt version                       Show the version
 
-Add --config PATH to setup, edit, run, switch, doctor, debug, or service
-commands to use a non-default configuration file.`)
+Add --config PATH to update, setup, edit, run, switch, doctor, debug, or
+service commands to use a non-default configuration file.`)
 }

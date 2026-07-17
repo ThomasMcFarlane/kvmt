@@ -9,7 +9,7 @@ import (
 	"runtime"
 )
 
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 type Config struct {
 	SchemaVersion   int           `json:"schema_version"`
@@ -55,14 +55,32 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find user configuration directory: %w", err)
 	}
-	return filepath.Join(dir, "KvmVidSwitcher", "config.json"), nil
+	path := filepath.Join(dir, "kvmt", "config.json")
+	if _, err := os.Stat(path); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return path, nil
+	}
+	legacyPath := filepath.Join(dir, "KvmVidSwitcher", "config.json")
+	legacy, err := os.ReadFile(legacyPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return path, nil
+		}
+		return "", fmt.Errorf("read legacy configuration: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("create KVMT configuration directory: %w", err)
+	}
+	if err := os.WriteFile(path, legacy, 0o600); err != nil {
+		return "", fmt.Errorf("migrate legacy configuration: %w", err)
+	}
+	return path, nil
 }
 
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Config{}, fmt.Errorf("configuration not found at %s; run 'kvmvidswitcher setup'", path)
+			return Config{}, fmt.Errorf("configuration not found at %s; run 'kvmt setup'", path)
 		}
 		return Config{}, fmt.Errorf("read configuration: %w", err)
 	}
@@ -107,7 +125,7 @@ func (cfg *Config) applyDefaults() {
 		cfg.SchemaVersion = SchemaVersion
 	}
 	if cfg.PollIntervalMS == 0 {
-		cfg.PollIntervalMS = 250
+		cfg.PollIntervalMS = 100
 	}
 	if cfg.DebounceChecks == 0 {
 		cfg.DebounceChecks = 2
@@ -139,6 +157,12 @@ func (cfg *Config) migrate() {
 		cfg.SchemaVersion = 4
 	}
 	if cfg.SchemaVersion == 4 {
+		cfg.SchemaVersion = 5
+	}
+	if cfg.SchemaVersion == 5 {
+		if cfg.PollIntervalMS == 250 {
+			cfg.PollIntervalMS = 100
+		}
 		cfg.SchemaVersion = SchemaVersion
 	}
 }
@@ -167,8 +191,8 @@ func (cfg Config) Validate() error {
 	if cfg.Monitor.ConnectedInputCode == 0 {
 		return errors.New("monitor connected_input_code must be non-zero")
 	}
-	if cfg.PollIntervalMS < 250 || cfg.PollIntervalMS > 60000 {
-		return errors.New("poll_interval_ms must be between 250 and 60000")
+	if cfg.PollIntervalMS < 100 || cfg.PollIntervalMS > 60000 {
+		return errors.New("poll_interval_ms must be between 100 and 60000")
 	}
 	if cfg.DebounceChecks < 1 || cfg.DebounceChecks > 20 {
 		return errors.New("debounce_checks must be between 1 and 20")

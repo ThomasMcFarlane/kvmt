@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/platform"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/platform"
 )
 
 type wizard struct {
@@ -28,7 +28,7 @@ type detectedDevice struct {
 
 func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) error {
 	w := wizard{in: bufio.NewReader(in), out: out}
-	fmt.Fprintln(out, "KvmVidSwitcher setup")
+	fmt.Fprintln(out, "KVMT setup")
 	fmt.Fprintln(out, "This configures the computer you are currently using.")
 	fmt.Fprintln(out)
 
@@ -109,7 +109,7 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 			DisconnectedInputCode: disconnectedInputCode,
 		},
 		Controller:      controller,
-		PollIntervalMS:  250,
+		PollIntervalMS:  100,
 		DebounceChecks:  2,
 		SwitchOnStart:   true,
 		RetrySeconds:    5,
@@ -123,9 +123,9 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 	if disconnectedInputCode != 0 {
 		fmt.Fprintf(out, "KVM connected → input %d; KVM disconnected → input %d.\n", connectedInputCode, disconnectedInputCode)
 	}
-	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state disconnected' to test the Mac input.")
-	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state connected' to restore Windows.")
-	fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to start it automatically.")
+	fmt.Fprintln(out, "Run 'kvmt switch --state disconnected' to test the Mac input.")
+	fmt.Fprintln(out, "Run 'kvmt switch --state connected' to restore Windows.")
+	fmt.Fprintln(out, "Run 'kvmt service install' to start it automatically.")
 	return nil
 }
 
@@ -135,7 +135,7 @@ func RunEditWizard(ctx context.Context, in io.Reader, out io.Writer, path string
 		return err
 	}
 	w := wizard{in: bufio.NewReader(in), out: out}
-	fmt.Fprintln(out, "KvmVidSwitcher configuration editor")
+	fmt.Fprintln(out, "KVMT configuration editor")
 	fmt.Fprintf(out, "Loaded %s\n", path)
 
 	for {
@@ -200,7 +200,7 @@ func RunEditWizard(ctx context.Context, in io.Reader, out io.Writer, path string
 				return err
 			}
 			fmt.Fprintf(out, "\nConfiguration saved to %s\n", path)
-			fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to apply it to the background service.")
+			fmt.Fprintln(out, "Run 'kvmt service install' to apply it to the background service.")
 			return nil
 		case 6:
 			fmt.Fprintln(out, "Configuration was not changed.")
@@ -539,7 +539,7 @@ func Doctor(ctx context.Context, out io.Writer, path string) error {
 			cfg.Device.FastTrigger.ProductID,
 		)
 	} else if runtime.GOOS == "windows" {
-		fmt.Fprintln(out, "Fast KVM trigger: NOT CONFIGURED (run 'kvmvidswitcher edit')")
+		fmt.Fprintln(out, "Fast KVM trigger: NOT CONFIGURED (run 'kvmt edit')")
 	}
 
 	devices, err := platform.ListUSBDevices(ctx)

@@ -1,11 +1,43 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestDefaultPathMigratesLegacyConfiguration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(configDir, "KvmVidSwitcher", "config.json")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte(`{"legacy":true}`)
+	if err := os.WriteFile(legacyPath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path, err := DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(configDir, "kvmt", "config.json"); path != want {
+		t.Fatalf("got path %q, want %q", path, want)
+	}
+	migrated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(migrated, legacy) {
+		t.Fatalf("migrated config is %q, want %q", migrated, legacy)
+	}
+}
 
 func TestSaveAndLoad(t *testing.T) {
 	t.Parallel()
@@ -77,8 +109,40 @@ func TestLoadMigratesVersionFourFastTriggerSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.SchemaVersion != SchemaVersion || cfg.Device.FastTrigger != nil {
+	if cfg.SchemaVersion != SchemaVersion || cfg.Device.FastTrigger != nil || cfg.PollIntervalMS != 100 {
 		t.Fatalf("version four config was not migrated: %#v", cfg)
+	}
+}
+
+func TestLoadMigratesVersionFivePollingSpeed(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	backend := "windows-ddc"
+	executable := ""
+	if runtime.GOOS == "darwin" {
+		backend = "m1ddc"
+		executable = "/opt/homebrew/bin/m1ddc"
+	}
+	data := []byte(`{
+  "schema_version": 5,
+  "device": {"name":"KVM","vendor_id":1,"product_id":2,"fast_trigger":{"vendor_id":3,"product_id":4}},
+  "monitor": {"id":"display-1","name":"Monitor","connected_input_code":15,"disconnected_input_code":17},
+  "controller": {"backend":"` + backend + `","executable":"` + executable + `"},
+  "poll_interval_ms":250,
+  "debounce_checks":2,
+  "switch_on_start":true,
+  "retry_seconds":5,
+  "retry_interval_ms":500
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SchemaVersion != SchemaVersion || cfg.PollIntervalMS != 100 {
+		t.Fatalf("version five config was not migrated: %#v", cfg)
 	}
 }
 
@@ -111,8 +175,8 @@ func TestLoadMigratesVersionOneInputCode(t *testing.T) {
 	if cfg.SchemaVersion != SchemaVersion || cfg.Monitor.ConnectedInputCode != 17 {
 		t.Fatalf("version one config was not migrated: %#v", cfg)
 	}
-	if cfg.PollIntervalMS != 250 {
-		t.Fatalf("migrated poll interval is %d, want 250", cfg.PollIntervalMS)
+	if cfg.PollIntervalMS != 100 {
+		t.Fatalf("migrated poll interval is %d, want 100", cfg.PollIntervalMS)
 	}
 }
 
@@ -142,7 +206,7 @@ func TestLoadMigratesVersionTwoPollingSpeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.SchemaVersion != SchemaVersion || cfg.PollIntervalMS != 250 {
+	if cfg.SchemaVersion != SchemaVersion || cfg.PollIntervalMS != 100 {
 		t.Fatalf("version two config was not migrated: %#v", cfg)
 	}
 	if cfg.RetryIntervalMS != 500 {

@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
 )
 
 const (

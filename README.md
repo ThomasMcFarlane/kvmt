@@ -1,9 +1,9 @@
-# KvmVidSwitcher
+# KVMT (KVM Toggler)
 
-KvmVidSwitcher keeps a monitor's video input synchronised with a USB KVM.
-For a Mac connected through a dock that blocks DDC/CI, run KvmVidSwitcher only
-on Windows. Windows switches to its own monitor input when the KVM USB device
-appears, and switches to the Mac input when that device disappears.
+KVMT keeps a monitor's video input synchronised with a USB KVM. It is designed
+for a Mac connected through a USB-C dock that cannot pass DDC/CI: KVMT runs on
+Windows and switches both monitor inputs without any connection between the
+two computers.
 
 ```text
 MacBook via USB-C dock ── HDMI input ─┐
@@ -18,90 +18,107 @@ Windows ───────────── DisplayPort ────┘
 
 ## Requirements
 
+- Windows 10 or 11.
 - A monitor with DDC/CI enabled in its on-screen menu.
-- A KVM that moves at least one identifiable USB device between computers.
-- Windows: Windows 10 or 11. Monitor control uses the native Windows DDC/CI API.
+- A Windows video connection that passes DDC/CI.
+- A KVM that moves a USB hub, keyboard, mouse, or receiver between computers.
 
-The Windows video connection must pass DDC/CI. The Mac dock does not need to
-pass DDC/CI because it never sends a monitor command.
+The Mac dock does not need to pass DDC/CI because the Mac never sends a monitor
+command.
 
-## Install
+## Install on Windows
 
-Download the Windows binary from the GitHub release. Rename
-`kvmvidswitcher-windows-amd64.exe` to
-`kvmvidswitcher.exe` and place it somewhere on your `PATH`, or run it using its
-full path.
+1. Download `kvmt-windows-amd64.exe` from the latest GitHub release.
+2. In PowerShell, run:
 
-## Configure Windows
+   ```powershell
+   .\kvmt-windows-amd64.exe install
+   ```
 
-The Mac does not need KvmVidSwitcher installed.
+3. Open a new terminal. `kvmt` is now available on your user `PATH`.
+4. Run `kvmt setup` and complete the guided configuration.
+5. Run `kvmt service install` to start the invisible background service.
+
+Administrator access is not required. The executable is installed to
+`%LOCALAPPDATA%\Programs\kvmt\bin\kvmt.exe`; its bin directory is added to the
+user `PATH`.
+
+### Upgrade from KvmVidSwitcher
+
+The first configuration-aware `kvmt` command automatically copies the existing
+configuration from `%APPDATA%\KvmVidSwitcher\config.json` to
+`%APPDATA%\kvmt\config.json`.
+`kvmt service install` removes the old Scheduled Task and stops the old daemon.
+
+## Configure
+
+The Mac does not need KVMT installed.
 
 1. Switch the KVM to Windows.
-2. Run `kvmvidswitcher.exe setup`.
+2. Run `kvmt setup`.
 3. Select the Windows monitor input, then the Mac monitor input.
-4. Use assisted USB detection. Switch the KVM away for about three seconds,
-   then back during the ten-second observation window.
-5. Select a USB device that follows the KVM. Assisted detection also records a
-   disappearing keyboard or mouse as the fast trigger when one is available.
-6. Run `kvmvidswitcher.exe doctor`.
-7. Run `kvmvidswitcher.exe service install`.
+4. Use assisted USB detection. Switch away for about three seconds, then back
+   during the ten-second observation window.
+5. Select a USB device that follows the KVM.
+6. Run `kvmt doctor`.
+7. Run `kvmt service install`.
 
-The installer copies the binary to a stable per-user location and creates a
-logon Scheduled Task. Administrator access is not required.
+Assisted detection also records a disappearing keyboard or mouse as the fast
+trigger. This avoids Windows' delayed PnP removal for generic USB hubs.
 
 ## Commands
 
 ```text
-kvmvidswitcher setup
-kvmvidswitcher edit
-kvmvidswitcher run
-kvmvidswitcher run --once
-kvmvidswitcher switch
-kvmvidswitcher switch --state disconnected
-kvmvidswitcher switch --state connected
-kvmvidswitcher devices
-kvmvidswitcher monitors
-kvmvidswitcher doctor
-kvmvidswitcher debug
-kvmvidswitcher debug --lines 100
-kvmvidswitcher service install
-kvmvidswitcher service status
-kvmvidswitcher service uninstall
+kvmt install
+kvmt update --check
+kvmt update
+kvmt setup
+kvmt edit
+kvmt run
+kvmt run --once
+kvmt switch --state disconnected
+kvmt switch --state connected
+kvmt devices
+kvmt monitors
+kvmt doctor
+kvmt debug [--lines 100]
+kvmt service install
+kvmt service status
+kvmt service uninstall
+kvmt version
 ```
 
 Use `--config PATH` with configuration-aware commands to use a different JSON
-file. By default, configuration is stored in the operating system's per-user
-configuration directory.
+file.
 
-### Edit the current configuration
+### Edit selected settings
 
-Run `kvmvidswitcher edit` to change only one part of the existing setup. The
-menu provides separate choices for the KVM USB device, monitor, Windows input,
-Mac input, and monitor-input tests. Untouched settings are preserved.
+Run `kvmt edit` to change only the KVM USB device, monitor, Windows input, Mac
+input, or monitor tests. Untouched settings are preserved. Run
+`kvmt service install` after saving to restart the daemon with the new config.
 
-After changing the KVM's USB port or hub:
+### Service status and diagnostics
 
-1. Run `kvmvidswitcher.exe edit`.
-2. Select `KVM USB device` and use assisted detection.
-3. Select `Save changes`.
-4. Run `kvmvidswitcher.exe service install` to restart the background service
-   with the updated configuration.
+`kvmt service status` prints the task state and the active configuration,
+including the USB device, fast trigger, monitor, inputs, polling, debounce, and
+retry settings.
 
-### Debug switching delays
+After reproducing a slow switch, run `kvmt debug`. It prints the latest 40
+timestamped service-log lines. Use `kvmt debug --lines 100` for more history.
+The Windows log is stored at `%APPDATA%\kvmt\service.log`.
 
-After reproducing a slow switch, return to Windows and run:
+## Updates
 
-```powershell
-kvmvidswitcher.exe debug
-```
+`kvmt update --check` checks GitHub's latest published release without changing
+anything. `kvmt update` downloads the matching binary, verifies GitHub's
+SHA-256 asset digest, atomically replaces the installed executable, and
+restarts an installed service.
 
-This prints the latest 40 background-service log lines, including timestamps
-for KVM detection, monitor commands, failures, and retries. Use `--lines 100`
-to show more history. Copy the output when reporting a switching problem.
+Unauthenticated updates work once the repository is public. While it remains
+private, set a read-only `GITHUB_TOKEN` in the environment before running the
+update command.
 
 ## Input codes
-
-The wizard provides the standard DDC/CI input-select values:
 
 | Input | Decimal | Hex |
 |---|---:|---:|
@@ -116,25 +133,20 @@ in the wizard when needed.
 
 ## Behaviour
 
-- USB presence uses native Windows device enumeration every 250 milliseconds.
-- Two matching checks debounce a KVM transition, giving roughly 0.5-second
-  detection without launching PowerShell in the monitoring loop.
-- KVM arrival selects the configured Windows input.
-- KVM departure selects the configured Mac input.
-- A switch is issued only after a state transition, not on every poll.
-- A failed DDC/CI command is retried every 500 milliseconds while the detected
-  KVM state remains unchanged.
-- Starting the background process selects the input matching the current KVM
-  state once.
-- The Scheduled Task launches through `wscript.exe`, a GUI host with no console
-  window. The daemon itself is started with Windows window style `0`.
-- Service installation uses a short launcher script to stay below Windows Task
-  Scheduler's 261-character action limit.
-- Assisted detection records a disappearing Windows Raw Input keyboard or
-  mouse as the fast trigger. This avoids the several-second PnP removal delay
-  even when the selected KVM device is a generic USB hub.
-- The background service writes timestamped diagnostics to
-  `%LOCALAPPDATA%\KvmVidSwitcher\service.log`.
+- Explicit Raw Input triggers are polled every 100 milliseconds and switch
+  after one matching state change.
+- Generic USB devices remain available as a slower PnP fallback.
+- Arrival selects the Windows input; departure selects the Mac input.
+- Failed DDC/CI commands retry every 500 milliseconds.
+- The Windows Scheduled Task launches through `wscript.exe` with window style
+  `0`; no terminal window is created or minimised.
+- Monitor commands and transition timestamps are written to the service log.
+
+## Open-source safety
+
+The repository contains no credentials, generated configuration, telemetry, or
+user data. The complete Git history is scanned with Gitleaks before release.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## Build
 
@@ -143,7 +155,7 @@ Go 1.24 or newer is required.
 ```sh
 make test
 make build
-make release VERSION=v0.1.0
+make release VERSION=v0.4.0
 ```
 
 `make release` creates Apple Silicon macOS and x64 Windows binaries plus

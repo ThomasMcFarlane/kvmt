@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
 )
 
 func ListUSBDevices(context.Context) ([]USBDevice, error) {

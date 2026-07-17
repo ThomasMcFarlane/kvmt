@@ -3,7 +3,7 @@ package platform
 import (
 	"context"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
 )
 
 type USBDevice struct {

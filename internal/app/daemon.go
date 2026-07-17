@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/config"
-	"github.com/ThomasMcFarlane/kvmvidswitcher/internal/platform"
+	"github.com/ThomasMcFarlane/kvmt/internal/config"
+	"github.com/ThomasMcFarlane/kvmt/internal/platform"
 )
 
 type deviceChecker func(context.Context, config.DeviceConfig) (bool, error)
@@ -43,6 +43,10 @@ func runDaemon(
 ) error {
 	interval := time.Duration(cfg.PollIntervalMS) * time.Millisecond
 	retryAfter := time.Duration(cfg.RetryIntervalMS) * time.Millisecond
+	debounceChecks := cfg.DebounceChecks
+	if cfg.Device.FastTrigger != nil {
+		debounceChecks = 1
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -78,7 +82,7 @@ func runDaemon(
 			initialised = true
 			stablePresent = present
 			candidate = present
-			candidateCount = cfg.DebounceChecks
+			candidateCount = debounceChecks
 			if cfg.SwitchOnStart {
 				pendingInput = cfg.InputCodeForDeviceState(present)
 			}
@@ -94,7 +98,7 @@ func runDaemon(
 			candidateCount = 1
 		}
 
-		if candidateCount >= cfg.DebounceChecks && candidate != stablePresent {
+		if candidateCount >= debounceChecks && candidate != stablePresent {
 			stablePresent = candidate
 			if stablePresent {
 				logger.Printf("KVM switched to this computer")

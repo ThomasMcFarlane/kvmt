@@ -8,19 +8,14 @@ import (
 )
 
 func installExecutable(source string) (string, error) {
-	configDir, err := os.UserConfigDir()
+	target, err := installedExecutablePath()
 	if err != nil {
-		return "", fmt.Errorf("find user configuration directory: %w", err)
+		return "", err
 	}
-	binDir := filepath.Join(configDir, "KvmVidSwitcher", "bin")
+	binDir := filepath.Dir(target)
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return "", fmt.Errorf("create application directory: %w", err)
 	}
-	name := "kvmvidswitcher"
-	if filepath.Ext(source) == ".exe" {
-		name += ".exe"
-	}
-	target := filepath.Join(binDir, name)
 	if samePath(source, target) {
 		return target, nil
 	}
@@ -48,6 +43,22 @@ func installExecutable(source string) (string, error) {
 		return "", fmt.Errorf("replace installed executable: %w", err)
 	}
 	return target, nil
+}
+
+func InstallCLI(source string) (string, bool, error) {
+	target, err := installExecutable(source)
+	if err != nil {
+		return "", false, err
+	}
+	added, err := addToUserPath(filepath.Dir(target))
+	if err != nil {
+		return "", false, err
+	}
+	return target, added, nil
+}
+
+func InstalledExecutablePath() (string, error) {
+	return installedExecutablePath()
 }
 
 func samePath(a, b string) bool {
