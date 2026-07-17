@@ -15,3 +15,7 @@ func UninstallService() error {
 func ServiceStatus() (string, error) {
 	return "", fmt.Errorf("this operating system is not supported")
 }
+
+func ServiceLogPath(string) (string, error) {
+	return "", fmt.Errorf("this operating system is not supported")
+}

@@ -168,6 +168,28 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		}
 		return app.Doctor(context.Background(), out, path)
 
+	case "debug":
+		fs := flag.NewFlagSet("debug", flag.ContinueOnError)
+		fs.SetOutput(errOut)
+		configPath := fs.String("config", "", "configuration file path")
+		lineCount := fs.Int("lines", 40, "number of recent service log lines")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *lineCount < 1 || *lineCount > 1000 {
+			return errors.New("debug lines must be between 1 and 1000")
+		}
+		path, err := resolveConfigPath(*configPath)
+		if err != nil {
+			return err
+		}
+		logPath, err := platform.ServiceLogPath(path)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Service log: %s\n\n", logPath)
+		return app.PrintLogTail(out, logPath, *lineCount)
+
 	case "service":
 		if len(args) < 2 {
 			return errors.New("usage: kvmvidswitcher service <install|uninstall|status>")
@@ -248,11 +270,12 @@ Usage:
   kvmvidswitcher devices               List connected USB devices
   kvmvidswitcher monitors              List controllable monitors
   kvmvidswitcher doctor                Check the configuration and hardware
+  kvmvidswitcher debug                 Show the latest background-service logs
   kvmvidswitcher service install       Start automatically in the background
   kvmvidswitcher service status        Show background-service status
   kvmvidswitcher service uninstall     Remove the background service
   kvmvidswitcher version               Show the version
 
-Add --config PATH to setup, run, switch, doctor, or service commands to use a
-non-default configuration file.`)
+Add --config PATH to setup, run, switch, doctor, debug, or service commands to
+use a non-default configuration file.`)
 }

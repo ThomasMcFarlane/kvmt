@@ -60,6 +60,8 @@ kvmvidswitcher switch --state connected
 kvmvidswitcher devices
 kvmvidswitcher monitors
 kvmvidswitcher doctor
+kvmvidswitcher debug
+kvmvidswitcher debug --lines 100
 kvmvidswitcher service install
 kvmvidswitcher service status
 kvmvidswitcher service uninstall
@@ -68,6 +70,18 @@ kvmvidswitcher service uninstall
 Use `--config PATH` with configuration-aware commands to use a different JSON
 file. By default, configuration is stored in the operating system's per-user
 configuration directory.
+
+### Debug switching delays
+
+After reproducing a slow switch, return to Windows and run:
+
+```powershell
+kvmvidswitcher.exe debug
+```
+
+This prints the latest 40 background-service log lines, including timestamps
+for KVM detection, monitor commands, failures, and retries. Use `--lines 100`
+to show more history. Copy the output when reporting a switching problem.
 
 ## Input codes
 

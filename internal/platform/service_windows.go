@@ -99,3 +99,7 @@ func ServiceStatus() (string, error) {
 		return "installed", nil
 	}
 }
+
+func ServiceLogPath(configPath string) (string, error) {
+	return filepath.Join(filepath.Dir(configPath), "service.log"), nil
+}
