@@ -42,3 +42,7 @@ func DevicePresent(ctx context.Context, match config.DeviceConfig) (bool, error)
 	}
 	return false, nil
 }
+
+func ListFastPresenceDevices(ctx context.Context) ([]USBDevice, error) {
+	return listFastPresenceDevices(ctx)
+}

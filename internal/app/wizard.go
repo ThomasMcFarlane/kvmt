@@ -21,6 +21,11 @@ type wizard struct {
 	out io.Writer
 }
 
+type detectedDevice struct {
+	device      platform.USBDevice
+	fastTrigger *platform.USBDevice
+}
+
 func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) error {
 	w := wizard{in: bufio.NewReader(in), out: out}
 	fmt.Fprintln(out, "KvmVidSwitcher setup")
@@ -55,7 +60,7 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 		}
 	}
 
-	device, err := w.detectKVMDevice(ctx)
+	detected, err := w.detectKVMDevice(ctx)
 	if err != nil {
 		return err
 	}
@@ -96,12 +101,7 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 
 	cfg := config.Config{
 		SchemaVersion: config.SchemaVersion,
-		Device: config.DeviceConfig{
-			Name:      device.Name,
-			VendorID:  device.VendorID,
-			ProductID: device.ProductID,
-			Serial:    device.Serial,
-		},
+		Device:        deviceConfig(detected),
 		Monitor: config.MonitorConfig{
 			ID:                    monitor.ID,
 			Name:                  monitor.Name,
@@ -126,6 +126,123 @@ func RunWizard(ctx context.Context, in io.Reader, out io.Writer, path string) er
 	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state disconnected' to test the Mac input.")
 	fmt.Fprintln(out, "Run 'kvmvidswitcher switch --state connected' to restore Windows.")
 	fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to start it automatically.")
+	return nil
+}
+
+func RunEditWizard(ctx context.Context, in io.Reader, out io.Writer, path string) error {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	w := wizard{in: bufio.NewReader(in), out: out}
+	fmt.Fprintln(out, "KvmVidSwitcher configuration editor")
+	fmt.Fprintf(out, "Loaded %s\n", path)
+
+	for {
+		connectedLabel := "This computer input"
+		disconnectedLabel := "Disconnected input"
+		if runtime.GOOS == "windows" {
+			connectedLabel = "Windows input"
+			disconnectedLabel = "Mac input"
+		}
+		fmt.Fprintln(out)
+		fmt.Fprintf(out, "  1. KVM USB device — %s (VID:%04X PID:%04X)\n", cfg.Device.Name, cfg.Device.VendorID, cfg.Device.ProductID)
+		if cfg.Device.FastTrigger != nil {
+			fmt.Fprintf(out, "     Fast trigger — VID:%04X PID:%04X\n", cfg.Device.FastTrigger.VendorID, cfg.Device.FastTrigger.ProductID)
+		}
+		fmt.Fprintf(out, "  2. Monitor — %s\n", cfg.Monitor.Name)
+		fmt.Fprintf(out, "  3. %s — input %d\n", connectedLabel, cfg.Monitor.ConnectedInputCode)
+		fmt.Fprintf(out, "  4. %s — input %d\n", disconnectedLabel, cfg.Monitor.DisconnectedInputCode)
+		fmt.Fprintln(out, "  5. Test the configured monitor inputs")
+		fmt.Fprintln(out, "  6. Save changes")
+		fmt.Fprintln(out, "  7. Cancel without saving")
+		choice, err := w.readChoice("Select a section", 7)
+		if err != nil {
+			return err
+		}
+
+		switch choice {
+		case 0:
+			detected, err := w.detectKVMDevice(ctx)
+			if err != nil {
+				return err
+			}
+			cfg.Device = deviceConfig(detected)
+		case 1:
+			monitors, err := platform.ListMonitors(ctx, cfg.Controller)
+			if err != nil {
+				return fmt.Errorf("discover monitors: %w", err)
+			}
+			monitor, err := w.chooseMonitor(monitors)
+			if err != nil {
+				return err
+			}
+			cfg.Monitor.ID = monitor.ID
+			cfg.Monitor.Name = monitor.Name
+		case 2:
+			code, err := w.chooseInput("Monitor input used when the KVM is connected")
+			if err != nil {
+				return err
+			}
+			cfg.Monitor.ConnectedInputCode = code
+		case 3:
+			code, err := w.chooseInput("Monitor input used when the KVM is disconnected")
+			if err != nil {
+				return err
+			}
+			cfg.Monitor.DisconnectedInputCode = code
+		case 4:
+			if err := w.testInputs(ctx, cfg); err != nil {
+				return err
+			}
+		case 5:
+			if err := config.Save(path, cfg); err != nil {
+				return err
+			}
+			fmt.Fprintf(out, "\nConfiguration saved to %s\n", path)
+			fmt.Fprintln(out, "Run 'kvmvidswitcher service install' to apply it to the background service.")
+			return nil
+		case 6:
+			fmt.Fprintln(out, "Configuration was not changed.")
+			return nil
+		}
+	}
+}
+
+func deviceConfig(detected detectedDevice) config.DeviceConfig {
+	device := config.DeviceConfig{
+		Name:      detected.device.Name,
+		VendorID:  detected.device.VendorID,
+		ProductID: detected.device.ProductID,
+		Serial:    detected.device.Serial,
+	}
+	if detected.fastTrigger != nil {
+		device.FastTrigger = &config.DeviceMatch{
+			Name:      detected.fastTrigger.Name,
+			VendorID:  detected.fastTrigger.VendorID,
+			ProductID: detected.fastTrigger.ProductID,
+		}
+	}
+	return device
+}
+
+func (w wizard) testInputs(ctx context.Context, cfg config.Config) error {
+	if cfg.Monitor.DisconnectedInputCode == 0 {
+		if err := platform.SwitchInput(ctx, cfg.Controller, cfg.Monitor.ID, cfg.Monitor.ConnectedInputCode); err != nil {
+			return fmt.Errorf("test connected monitor input: %w", err)
+		}
+		fmt.Fprintln(w.out, "The configured monitor input responded successfully.")
+		return nil
+	}
+	if err := platform.SwitchInput(ctx, cfg.Controller, cfg.Monitor.ID, cfg.Monitor.DisconnectedInputCode); err != nil {
+		return fmt.Errorf("test disconnected monitor input: %w", err)
+	}
+	fmt.Fprintln(w.out, "Switched to the disconnected input; restoring in five seconds...")
+	time.Sleep(5 * time.Second)
+	if err := platform.SwitchInput(ctx, cfg.Controller, cfg.Monitor.ID, cfg.Monitor.ConnectedInputCode); err != nil {
+		return fmt.Errorf("restore connected monitor input: %w", err)
+	}
+	fmt.Fprintln(w.out, "Both monitor inputs responded successfully.")
 	return nil
 }
 
@@ -183,38 +300,45 @@ func (w wizard) chooseInput(prompt string) (uint16, error) {
 	}
 }
 
-func (w wizard) detectKVMDevice(ctx context.Context) (platform.USBDevice, error) {
+func (w wizard) detectKVMDevice(ctx context.Context) (detectedDevice, error) {
 	connected, err := platform.ListUSBDevicesDetailed(ctx)
 	if err != nil {
-		return platform.USBDevice{}, fmt.Errorf("list connected USB devices: %w", err)
+		return detectedDevice{}, fmt.Errorf("list connected USB devices: %w", err)
 	}
 	connected = uniqueDevices(connected)
 	if len(connected) == 0 {
-		return platform.USBDevice{}, fmt.Errorf("no connected USB devices found")
+		return detectedDevice{}, fmt.Errorf("no connected USB devices found")
 	}
+	fastConnected, err := platform.ListFastPresenceDevices(ctx)
+	if err != nil {
+		fastConnected = nil
+	}
+	fastConnected = uniqueDevices(fastConnected)
 
 	fmt.Fprintln(w.out, "\nKVM device detection:")
 	fmt.Fprintln(w.out, "The wizard can watch which USB device disappears when you switch away.")
 	fmt.Fprint(w.out, "Use assisted detection? [Y/n]: ")
 	assisted, err := w.readYesNo(true)
 	if err != nil {
-		return platform.USBDevice{}, err
+		return detectedDevice{}, err
 	}
 
 	candidates := connected
+	var fastCandidates []platform.USBDevice
 	if assisted {
 		fmt.Fprintln(w.out)
 		fmt.Fprintln(w.out, "1. Make sure the KVM is switched to this computer.")
 		fmt.Fprintln(w.out, "2. Press Enter, switch the KVM away for three seconds, then switch it back.")
 		fmt.Fprintln(w.out, "3. The wizard watches for ten seconds; no keyboard input is needed.")
 		if _, err := w.readLine(); err != nil {
-			return platform.USBDevice{}, err
+			return detectedDevice{}, err
 		}
-		candidates, err = observeDisappearingDevices(ctx, connected, 10*time.Second)
+		candidates, fastCandidates, err = observeDisappearingDevices(ctx, connected, fastConnected, 10*time.Second)
 		if err != nil {
-			return platform.USBDevice{}, err
+			return detectedDevice{}, err
 		}
 		candidates = uniqueDevices(candidates)
+		fastCandidates = uniqueDevices(fastCandidates)
 		if len(candidates) == 0 {
 			fmt.Fprintln(w.out, "No disappearing device was detected; showing all connected USB devices.")
 			candidates = connected
@@ -236,17 +360,39 @@ func (w wizard) detectKVMDevice(ctx context.Context) (platform.USBDevice, error)
 	}
 	index, err := w.readChoice("Select the KVM-connected USB device", len(candidates))
 	if err != nil {
-		return platform.USBDevice{}, err
+		return detectedDevice{}, err
 	}
-	return candidates[index], nil
+	detected := detectedDevice{device: candidates[index]}
+	if len(fastCandidates) > 0 {
+		sort.SliceStable(fastCandidates, func(i, j int) bool {
+			if fastCandidates[i].VendorID != fastCandidates[j].VendorID {
+				return fastCandidates[i].VendorID < fastCandidates[j].VendorID
+			}
+			return fastCandidates[i].ProductID < fastCandidates[j].ProductID
+		})
+		detected.fastTrigger = &fastCandidates[0]
+		fmt.Fprintf(
+			w.out,
+			"Fast trigger detected automatically — VID:%04X PID:%04X.\n",
+			detected.fastTrigger.VendorID,
+			detected.fastTrigger.ProductID,
+		)
+	} else if assisted && runtime.GOOS == "windows" {
+		fmt.Fprintln(w.out, "No fast keyboard or mouse trigger was detected; USB hub removal may remain delayed.")
+	}
+	return detected, nil
 }
 
-func observeDisappearingDevices(ctx context.Context, initial []platform.USBDevice, duration time.Duration) ([]platform.USBDevice, error) {
-	initialByKey := make(map[string]platform.USBDevice)
-	for _, device := range initial {
-		initialByKey[deviceKey(device)] = device
-	}
+func observeDisappearingDevices(
+	ctx context.Context,
+	initial []platform.USBDevice,
+	initialFast []platform.USBDevice,
+	duration time.Duration,
+) ([]platform.USBDevice, []platform.USBDevice, error) {
+	initialByKey := devicesByKey(initial)
+	initialFastByKey := devicesByKey(initialFast)
 	disappeared := make(map[string]platform.USBDevice)
+	disappearedFast := make(map[string]platform.USBDevice)
 	deadline := time.NewTimer(duration)
 	defer deadline.Stop()
 	ticker := time.NewTicker(250 * time.Millisecond)
@@ -255,29 +401,49 @@ func observeDisappearingDevices(ctx context.Context, initial []platform.USBDevic
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		case <-deadline.C:
-			result := make([]platform.USBDevice, 0, len(disappeared))
-			for _, device := range disappeared {
-				result = append(result, device)
-			}
-			return result, nil
+			return deviceMapValues(disappeared), deviceMapValues(disappearedFast), nil
 		case <-ticker.C:
 			current, err := platform.ListUSBDevices(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("observe USB devices: %w", err)
+				return nil, nil, fmt.Errorf("observe USB devices: %w", err)
 			}
-			present := make(map[string]bool)
-			for _, device := range current {
-				present[deviceKey(device)] = true
-			}
-			for key, device := range initialByKey {
-				if !present[key] {
-					disappeared[key] = device
-				}
+			markDisappeared(initialByKey, devicesByKey(current), disappeared)
+			currentFast, err := platform.ListFastPresenceDevices(ctx)
+			if err == nil {
+				markDisappeared(initialFastByKey, devicesByKey(currentFast), disappearedFast)
 			}
 		}
 	}
+}
+
+func devicesByKey(devices []platform.USBDevice) map[string]platform.USBDevice {
+	result := make(map[string]platform.USBDevice, len(devices))
+	for _, device := range devices {
+		result[deviceKey(device)] = device
+	}
+	return result
+}
+
+func markDisappeared(
+	initial map[string]platform.USBDevice,
+	current map[string]platform.USBDevice,
+	disappeared map[string]platform.USBDevice,
+) {
+	for key, device := range initial {
+		if _, present := current[key]; !present {
+			disappeared[key] = device
+		}
+	}
+}
+
+func deviceMapValues(devices map[string]platform.USBDevice) []platform.USBDevice {
+	result := make([]platform.USBDevice, 0, len(devices))
+	for _, device := range devices {
+		result = append(result, device)
+	}
+	return result
 }
 
 func uniqueDevices(devices []platform.USBDevice) []platform.USBDevice {
@@ -364,6 +530,16 @@ func Doctor(ctx context.Context, out io.Writer, path string) error {
 	fmt.Fprintf(out, "KVM connected input: %d\n", cfg.Monitor.ConnectedInputCode)
 	if cfg.Monitor.DisconnectedInputCode != 0 {
 		fmt.Fprintf(out, "KVM disconnected input: %d\n", cfg.Monitor.DisconnectedInputCode)
+	}
+	if cfg.Device.FastTrigger != nil {
+		fmt.Fprintf(
+			out,
+			"Fast KVM trigger: CONFIGURED (VID:%04X PID:%04X)\n",
+			cfg.Device.FastTrigger.VendorID,
+			cfg.Device.FastTrigger.ProductID,
+		)
+	} else if runtime.GOOS == "windows" {
+		fmt.Fprintln(out, "Fast KVM trigger: NOT CONFIGURED (run 'kvmvidswitcher edit')")
 	}
 
 	devices, err := platform.ListUSBDevices(ctx)

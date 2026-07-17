@@ -38,6 +38,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 		fs.SetOutput(errOut)
 		configPath := fs.String("config", "", "configuration file path")
+		edit := fs.Bool("edit", false, "selectively edit the existing configuration")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -45,7 +46,23 @@ func run(args []string, in io.Reader, out, errOut io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if *edit {
+			return app.RunEditWizard(context.Background(), in, out, path)
+		}
 		return app.RunWizard(context.Background(), in, out, path)
+
+	case "edit":
+		fs := flag.NewFlagSet("edit", flag.ContinueOnError)
+		fs.SetOutput(errOut)
+		configPath := fs.String("config", "", "configuration file path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		path, err := resolveConfigPath(*configPath)
+		if err != nil {
+			return err
+		}
+		return app.RunEditWizard(context.Background(), in, out, path)
 
 	case "run":
 		fs := flag.NewFlagSet("run", flag.ContinueOnError)
@@ -263,6 +280,7 @@ func printUsage(out io.Writer) {
 
 Usage:
   kvmvidswitcher setup                 Guided configuration
+  kvmvidswitcher edit                  Selectively edit existing configuration
   kvmvidswitcher run                   Run the monitor in the foreground
   kvmvidswitcher run --once            Switch once for the current KVM state
   kvmvidswitcher switch [--state STATE] Test a configured input
@@ -276,6 +294,6 @@ Usage:
   kvmvidswitcher service uninstall     Remove the background service
   kvmvidswitcher version               Show the version
 
-Add --config PATH to setup, run, switch, doctor, debug, or service commands to
-use a non-default configuration file.`)
+Add --config PATH to setup, edit, run, switch, doctor, debug, or service
+commands to use a non-default configuration file.`)
 }

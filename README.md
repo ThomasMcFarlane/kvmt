@@ -41,7 +41,8 @@ The Mac does not need KvmVidSwitcher installed.
 3. Select the Windows monitor input, then the Mac monitor input.
 4. Use assisted USB detection. Switch the KVM away for about three seconds,
    then back during the ten-second observation window.
-5. Select a USB device that follows the KVM, then accept the monitor test.
+5. Select a USB device that follows the KVM. Assisted detection also records a
+   disappearing keyboard or mouse as the fast trigger when one is available.
 6. Run `kvmvidswitcher.exe doctor`.
 7. Run `kvmvidswitcher.exe service install`.
 
@@ -52,6 +53,7 @@ logon Scheduled Task. Administrator access is not required.
 
 ```text
 kvmvidswitcher setup
+kvmvidswitcher edit
 kvmvidswitcher run
 kvmvidswitcher run --once
 kvmvidswitcher switch
@@ -70,6 +72,20 @@ kvmvidswitcher service uninstall
 Use `--config PATH` with configuration-aware commands to use a different JSON
 file. By default, configuration is stored in the operating system's per-user
 configuration directory.
+
+### Edit the current configuration
+
+Run `kvmvidswitcher edit` to change only one part of the existing setup. The
+menu provides separate choices for the KVM USB device, monitor, Windows input,
+Mac input, and monitor-input tests. Untouched settings are preserved.
+
+After changing the KVM's USB port or hub:
+
+1. Run `kvmvidswitcher.exe edit`.
+2. Select `KVM USB device` and use assisted detection.
+3. Select `Save changes`.
+4. Run `kvmvidswitcher.exe service install` to restart the background service
+   with the updated configuration.
 
 ### Debug switching delays
 
@@ -114,8 +130,9 @@ in the wizard when needed.
   window. The daemon itself is started with Windows window style `0`.
 - Service installation uses a short launcher script to stay below Windows Task
   Scheduler's 261-character action limit.
-- Keyboard and mouse receivers use Windows Raw Input presence, avoiding the
-  several-second PnP removal delay when the KVM switches away.
+- Assisted detection records a disappearing Windows Raw Input keyboard or
+  mouse as the fast trigger. This avoids the several-second PnP removal delay
+  even when the selected KVM device is a generic USB hub.
 - The background service writes timestamped diagnostics to
   `%LOCALAPPDATA%\KvmVidSwitcher\service.log`.
 

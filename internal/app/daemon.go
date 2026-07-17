@@ -53,6 +53,13 @@ func runDaemon(
 		cfg.Device.ProductID,
 		interval,
 	)
+	if cfg.Device.FastTrigger != nil {
+		logger.Printf(
+			"using fast Raw Input trigger (VID:%04X PID:%04X)",
+			cfg.Device.FastTrigger.VendorID,
+			cfg.Device.FastTrigger.ProductID,
+		)
+	}
 
 	var stablePresent bool
 	var initialised bool

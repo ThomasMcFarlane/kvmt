@@ -9,7 +9,7 @@ import (
 	"runtime"
 )
 
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 type Config struct {
 	SchemaVersion   int           `json:"schema_version"`
@@ -24,10 +24,17 @@ type Config struct {
 }
 
 type DeviceConfig struct {
-	Name      string `json:"name"`
+	Name        string       `json:"name"`
+	VendorID    uint16       `json:"vendor_id"`
+	ProductID   uint16       `json:"product_id"`
+	Serial      string       `json:"serial,omitempty"`
+	FastTrigger *DeviceMatch `json:"fast_trigger,omitempty"`
+}
+
+type DeviceMatch struct {
+	Name      string `json:"name,omitempty"`
 	VendorID  uint16 `json:"vendor_id"`
 	ProductID uint16 `json:"product_id"`
-	Serial    string `json:"serial,omitempty"`
 }
 
 type MonitorConfig struct {
@@ -129,6 +136,9 @@ func (cfg *Config) migrate() {
 	}
 	if cfg.SchemaVersion == 3 {
 		cfg.RetryIntervalMS = 500
+		cfg.SchemaVersion = 4
+	}
+	if cfg.SchemaVersion == 4 {
 		cfg.SchemaVersion = SchemaVersion
 	}
 }
@@ -146,6 +156,10 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Device.VendorID == 0 || cfg.Device.ProductID == 0 {
 		return errors.New("USB vendor_id and product_id must be non-zero")
+	}
+	if cfg.Device.FastTrigger != nil &&
+		(cfg.Device.FastTrigger.VendorID == 0 || cfg.Device.FastTrigger.ProductID == 0) {
+		return errors.New("fast trigger USB vendor_id and product_id must be non-zero")
 	}
 	if cfg.Monitor.ID == "" {
 		return errors.New("monitor id is required")

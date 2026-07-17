@@ -138,17 +138,31 @@ func fastDevicePresent(ctx context.Context, match config.DeviceConfig) (bool, bo
 	if err != nil {
 		return false, false, nil
 	}
-	key := fmt.Sprintf("%04X:%04X", match.VendorID, match.ProductID)
+	vendorID := match.VendorID
+	productID := match.ProductID
+	explicit := match.FastTrigger != nil
+	if explicit {
+		vendorID = match.FastTrigger.VendorID
+		productID = match.FastTrigger.ProductID
+	}
+	key := fmt.Sprintf("%04X:%04X", vendorID, productID)
 	for _, device := range rawDevices {
-		if device.VendorID == match.VendorID && device.ProductID == match.ProductID {
+		if device.VendorID == vendorID && device.ProductID == productID {
 			rawInputCapable.Store(key, true)
 			return true, true, nil
 		}
+	}
+	if explicit {
+		return false, true, nil
 	}
 	if _, learned := rawInputCapable.Load(key); learned {
 		return false, true, nil
 	}
 	return false, false, nil
+}
+
+func listFastPresenceDevices(ctx context.Context) ([]USBDevice, error) {
+	return listRawInputUSBDevices(ctx)
 }
 
 func listRawInputUSBDevices(ctx context.Context) ([]USBDevice, error) {

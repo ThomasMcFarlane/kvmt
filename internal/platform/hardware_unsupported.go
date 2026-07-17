@@ -21,6 +21,10 @@ func fastDevicePresent(context.Context, config.DeviceConfig) (bool, bool, error)
 	return false, false, nil
 }
 
+func listFastPresenceDevices(context.Context) ([]USBDevice, error) {
+	return nil, nil
+}
+
 func DefaultController() (config.Controller, error) {
 	return config.Controller{}, fmt.Errorf("this operating system is not supported")
 }
